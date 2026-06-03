@@ -1,0 +1,138 @@
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Menu, X } from 'lucide-react';
+
+const NAV_ITEMS = [
+  { label: 'Home', href: '/' },
+  { label: 'About', target: '#about' },
+  { label: 'Gallery', target: '#gallery' },
+  { label: 'Book', target: '#book' },
+];
+
+export default function VelvetNav() {
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 80);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleNavClick = (target: string) => {
+    setMobileOpen(false);
+    if (target.startsWith('#')) {
+      const el = document.querySelector(target);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
+  return (
+    <nav
+      className="fixed top-0 left-0 w-full z-[100] transition-all duration-500"
+      style={{
+        backgroundColor: scrolled ? 'rgba(10, 10, 10, 0.95)' : 'transparent',
+        backdropFilter: scrolled ? 'blur(12px)' : 'none',
+        borderBottom: scrolled ? '1px solid #1A1A1A' : '1px solid transparent',
+      }}
+    >
+      <div className="max-w-[1400px] mx-auto px-6 md:px-12 flex items-center justify-between h-16">
+        {/* Logo */}
+        <Link
+          to="/"
+          className="font-serif text-lg tracking-tight transition-opacity duration-300 hover:opacity-70"
+          style={{ color: '#D14A6E' }}
+          data-cursor-hover
+        >
+          ← TGC
+        </Link>
+
+        <span
+          className="font-serif text-base absolute left-1/2 -translate-x-1/2 hidden md:block"
+          style={{ color: '#E8DDD4', letterSpacing: '0.1em' }}
+        >
+          VELVET INK
+        </span>
+
+        {/* Desktop Nav */}
+        <div className="hidden md:flex items-center gap-8">
+          {NAV_ITEMS.map((item) =>
+            item.href ? (
+              <Link
+                key={item.label}
+                to={item.href}
+                className="font-sans text-xs uppercase tracking-[0.15em] relative group"
+                style={{ color: '#E8DDD4', opacity: 0.7 }}
+                data-cursor-hover
+              >
+                <span>{item.label}</span>
+                <span
+                  className="absolute bottom-0 left-0 w-0 h-[1px] transition-all duration-400 group-hover:w-full"
+                  style={{ backgroundColor: '#D14A6E' }}
+                />
+              </Link>
+            ) : (
+              <button
+                key={item.label}
+                onClick={() => handleNavClick(item.target!)}
+                className="font-sans text-xs uppercase tracking-[0.15em] relative group"
+                style={{ color: '#E8DDD4', opacity: 0.7, background: 'none', border: 'none', cursor: 'pointer' }}
+                data-cursor-hover
+              >
+                <span>{item.label}</span>
+                <span
+                  className="absolute bottom-0 left-0 w-0 h-[1px] transition-all duration-400 group-hover:w-full"
+                  style={{ backgroundColor: '#D14A6E' }}
+                />
+              </button>
+            )
+          )}
+        </div>
+
+        {/* Mobile menu button */}
+        <button
+          className="md:hidden"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          style={{ color: '#E8DDD4', background: 'none', border: 'none' }}
+        >
+          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
+
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <div
+          className="md:hidden px-6 pb-6 flex flex-col gap-4"
+          style={{ backgroundColor: 'rgba(10, 10, 10, 0.98)' }}
+        >
+          {NAV_ITEMS.map((item) =>
+            item.href ? (
+              <Link
+                key={item.label}
+                to={item.href}
+                onClick={() => setMobileOpen(false)}
+                className="font-sans text-sm uppercase tracking-[0.15em] py-2"
+                style={{ color: '#E8DDD4' }}
+              >
+                {item.label}
+              </Link>
+            ) : (
+              <button
+                key={item.label}
+                onClick={() => handleNavClick(item.target!)}
+                className="font-sans text-sm uppercase tracking-[0.15em] py-2 text-left"
+                style={{ color: '#E8DDD4', background: 'none', border: 'none' }}
+              >
+                {item.label}
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </nav>
+  );
+}

@@ -1,0 +1,9 @@
+@media (pointer: fine) {
+  body { cursor: none; }
+  a, button, [data-cursor-hover] { cursor: none; }
+}
+
+@media (pointer: coarse) {
+  body { cursor: auto; }
+  a, button, [data-cursor-hover] { cursor: pointer; }
+}
