@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
+import { scrollBehavior } from '@/lib/motion';
 
 const NAV_ITEMS = [
   { label: 'Home', href: '/' },
@@ -26,7 +27,7 @@ export default function VelvetNav() {
     if (target.startsWith('#')) {
       const el = document.querySelector(target);
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
+        el.scrollIntoView({ behavior: scrollBehavior() });
       }
     }
   };
@@ -96,6 +97,9 @@ export default function VelvetNav() {
         {/* Mobile menu button */}
         <button
           className="md:hidden"
+          type="button"
+          aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={mobileOpen}
           onClick={() => setMobileOpen(!mobileOpen)}
           style={{ color: '#E8DDD4', background: 'none', border: 'none' }}
         >
@@ -123,6 +127,7 @@ export default function VelvetNav() {
             ) : (
               <button
                 key={item.label}
+                type="button"
                 onClick={() => handleNavClick(item.target!)}
                 className="font-sans text-sm uppercase tracking-[0.15em] py-2 text-left"
                 style={{ color: '#E8DDD4', background: 'none', border: 'none' }}

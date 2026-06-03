@@ -7,12 +7,16 @@ import WrittenAbout from '../written-word/sections/WrittenAbout';
 import WrittenBooks from '../written-word/sections/WrittenBooks';
 import WrittenContact from '../written-word/sections/WrittenContact';
 import WrittenFooter from '../written-word/sections/WrittenFooter';
+import { prefersReducedMotion } from '@/lib/motion';
+import { routeMetadata, usePageMetadata } from '@/lib/seo';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function WrittenWordPage() {
+  usePageMetadata(routeMetadata.writtenWord);
+
   useEffect(() => {
-    ScrollTrigger.refresh();
+    if (!prefersReducedMotion()) ScrollTrigger.refresh();
   }, []);
 
   return (

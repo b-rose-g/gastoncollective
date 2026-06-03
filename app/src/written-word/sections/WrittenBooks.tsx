@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ExternalLink } from 'lucide-react';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -12,6 +13,11 @@ export default function WrittenBooks() {
   const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([headingRef.current, contentRef.current]);
+      return;
+    }
+
     const ctx = gsap.context(() => {
       gsap.fromTo(
         headingRef.current,
@@ -86,6 +92,9 @@ export default function WrittenBooks() {
               <img
                 src="/images/book_reach_for_the_stars.png"
                 alt="Reach For The Stars - Intro To Mental Health Workbook by Kimberlin Gaston"
+                width={441}
+                height={628}
+                decoding="async"
                 className="w-full h-full object-cover"
                 loading="lazy"
               />

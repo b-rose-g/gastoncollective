@@ -124,7 +124,7 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
   const canGoNext = viewDate < maxDate;
 
   return (
-    <div className="w-full">
+    <div className="w-full" role="group" aria-label="Preferred dates and times">
       {/* Selections display */}
       {selections.length > 0 && (
         <div className="mb-6 flex flex-wrap gap-3">
@@ -143,6 +143,7 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
               </span>
               <button
                 type="button"
+                aria-label={`Remove ${sel.label}`}
                 onClick={() => removeSelection(i)}
                 style={{
                   color: '#D14A6E',
@@ -173,6 +174,7 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
           <div className="flex items-center justify-between mb-4">
             <button
               type="button"
+              aria-label="Show previous month"
               onClick={() => setViewDate(new Date(year, month - 1, 1))}
               disabled={!canGoPrev}
               className="transition-opacity duration-200"
@@ -194,6 +196,7 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
             </span>
             <button
               type="button"
+              aria-label="Show next month"
               onClick={() => setViewDate(new Date(year, month + 1, 1))}
               disabled={!canGoNext}
               className="transition-opacity duration-200"
@@ -239,6 +242,8 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
                 <button
                   key={i}
                   type="button"
+                  aria-label={`${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}${blocked ? ' unavailable' : ''}`}
+                  aria-pressed={isPicked || selected}
                   onClick={() => handleDateClick(date)}
                   disabled={blocked}
                   className="aspect-square flex items-center justify-center font-sans text-sm transition-all duration-200"
@@ -311,6 +316,7 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
                     <button
                       key={time}
                       type="button"
+                      aria-label={`Select ${time}`}
                       onClick={() => handleTimeSelect(time)}
                       className="font-sans text-sm py-3 px-4 border transition-all duration-300 hover:border-[#D14A6E] hover:text-[#D14A6E]"
                       style={{

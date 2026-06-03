@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import gsap from 'gsap';
 import { ChevronDown } from 'lucide-react';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 const TITLE_LINE_1 = 'THE GASTON';
 const TITLE_LINE_2 = 'COLLECTIVE';
@@ -15,6 +17,19 @@ export default function HeroSection() {
   const chevronRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([
+        ...line1Ref.current,
+        ...line2Ref.current,
+        taglineRef.current,
+        lineRef.current,
+        badgesRef.current,
+        chevronRef.current,
+      ]);
+      if (lineRef.current) lineRef.current.style.transform = 'scaleX(1)';
+      return;
+    }
+
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ delay: 0.3 });
 
@@ -150,9 +165,9 @@ export default function HeroSection() {
             { label: 'Books', accent: '#BFA76A', href: '/written-word' },
             { label: 'Shop', accent: '#C9A9A6', href: '/shop' },
           ].map((tag, i) => (
-            <a
+            <Link
               key={i}
-              href={`/#${tag.label.toLowerCase().replace(' ', '-')}`}
+              to={tag.href}
               className="venture-tag opacity-0 px-7 py-2.5 font-sans text-xs uppercase tracking-[0.25em] border transition-all duration-300 hover:scale-105"
               style={{
                 color: tag.accent,
@@ -171,7 +186,7 @@ export default function HeroSection() {
               data-cursor-hover
             >
               {tag.label}
-            </a>
+            </Link>
           ))}
         </div>
       </div>
@@ -181,7 +196,7 @@ export default function HeroSection() {
         className="absolute bottom-10 left-1/2 -translate-x-1/2 z-10 opacity-0"
         style={{ color: '#2D2D2D' }}
       >
-        <ChevronDown size={24} className="animate-bounce-down" />
+        <ChevronDown size={24} className="animate-bounce-down" aria-hidden="true" />
       </div>
     </section>
   );

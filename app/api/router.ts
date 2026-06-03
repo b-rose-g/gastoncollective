@@ -8,11 +8,13 @@
  */
 
 import { createRouter } from "./middleware";
+import { adminRouter } from "./routers/admin";
 import { contactRouter } from "./routers/contact";
 import { bookingRouter } from "./routers/booking";
 import { commissionRouter } from "./routers/commission";
 
 export const appRouter = createRouter({
+  admin: adminRouter,
   contact: contactRouter,
   booking: bookingRouter,
   commission: commissionRouter,

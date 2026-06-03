@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
 // Use 3 real tattoo photos for the scattered Polaroid effect
 const PHOTOS = [
-  { src: '/images/tattoo_3.jpg', rotation: -3, offset: { x: -20, y: 0 } },
-  { src: '/images/tattoo_5.jpg', rotation: 2, offset: { x: 30, y: 40 } },
-  { src: '/images/tattoo_9.jpg', rotation: -2, offset: { x: 10, y: -30 } },
+  { src: '/images/tattoo_3.jpg', width: 1080, height: 1440, rotation: -3, offset: { x: -20, y: 0 } },
+  { src: '/images/tattoo_5.jpg', width: 529, height: 1197, rotation: 2, offset: { x: 30, y: 40 } },
+  { src: '/images/tattoo_9.jpg', width: 277, height: 774, rotation: -2, offset: { x: 10, y: -30 } },
 ];
 
 export default function EthosSection() {
@@ -19,6 +20,10 @@ export default function EthosSection() {
 
   useEffect(() => {
     if (!sectionRef.current) return;
+    if (prefersReducedMotion()) {
+      revealImmediately([quoteRef.current, bodyRef.current, ...(photosRef.current ? Array.from(photosRef.current.querySelectorAll('.ethos-photo')) : [])]);
+      return;
+    }
 
     const ctx = gsap.context(() => {
       gsap.fromTo(
@@ -113,6 +118,9 @@ export default function EthosSection() {
                 <img
                   src={photo.src}
                   alt="Tattoo artwork"
+                  width={photo.width}
+                  height={photo.height}
+                  decoding="async"
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />

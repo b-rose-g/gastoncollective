@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -12,6 +13,11 @@ export default function WrittenAbout() {
   const quoteRef = useRef<HTMLQuoteElement>(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([headingRef.current, body1Ref.current, body2Ref.current, quoteRef.current]);
+      return;
+    }
+
     const ctx = gsap.context(() => {
       gsap.fromTo(headingRef.current, { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 1, ease: 'power3.out', scrollTrigger: { trigger: sectionRef.current, start: 'top 80%' } });
       gsap.fromTo(body1Ref.current, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' } });

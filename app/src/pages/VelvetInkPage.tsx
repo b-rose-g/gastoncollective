@@ -7,12 +7,16 @@ import VelvetAbout from '../velvet-ink/sections/VelvetAbout';
 import VelvetGallery from '../velvet-ink/sections/VelvetGallery';
 import VelvetContact from '../velvet-ink/sections/VelvetContact';
 import VelvetFooter from '../velvet-ink/sections/VelvetFooter';
+import { prefersReducedMotion } from '@/lib/motion';
+import { routeMetadata, usePageMetadata } from '@/lib/seo';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function VelvetInkPage() {
+  usePageMetadata(routeMetadata.velvetInk);
+
   useEffect(() => {
-    ScrollTrigger.refresh();
+    if (!prefersReducedMotion()) ScrollTrigger.refresh();
   }, []);
 
   return (

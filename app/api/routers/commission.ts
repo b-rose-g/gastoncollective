@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { createRouter, publicQuery } from "../middleware";
+import { createRouter, protectedQuery, publicQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { commissionRequests } from "@db/schema";
 import { eq } from "drizzle-orm";
 
 export const commissionRouter = createRouter({
-  list: publicQuery.query(async () => {
+  list: protectedQuery.query(async () => {
     const db = getDb();
     return db.select().from(commissionRequests).orderBy(commissionRequests.createdAt);
   }),
@@ -28,7 +28,7 @@ export const commissionRouter = createRouter({
       return { success: true };
     }),
 
-  updateStatus: publicQuery
+  updateStatus: protectedQuery
     .input(
       z.object({
         id: z.number(),
@@ -44,7 +44,7 @@ export const commissionRouter = createRouter({
       return { success: true };
     }),
 
-  addNotes: publicQuery
+  addNotes: protectedQuery
     .input(z.object({ id: z.number(), notes: z.string() }))
     .mutation(async ({ input }) => {
       const db = getDb();

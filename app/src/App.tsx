@@ -1,31 +1,44 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import Lenis from 'lenis';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import CustomCursor from './components/CustomCursor';
-import HomePage from './pages/HomePage';
-import VelvetInkPage from './pages/VelvetInkPage';
-import WrittenWordPage from './pages/WrittenWordPage';
-import ShopPage from './pages/ShopPage';
-import AdminPage from './pages/AdminPage';
+import { prefersReducedMotion } from './lib/motion';
 import './App.css';
 
 gsap.registerPlugin(ScrollTrigger);
+
+const HomePage = lazy(() => import('./pages/HomePage'));
+const VelvetInkPage = lazy(() => import('./pages/VelvetInkPage'));
+const WrittenWordPage = lazy(() => import('./pages/WrittenWordPage'));
+const ShopPage = lazy(() => import('./pages/ShopPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => {
     window.scrollTo(0, 0);
-    ScrollTrigger.refresh();
+    if (!prefersReducedMotion()) ScrollTrigger.refresh();
   }, [pathname]);
   return null;
 }
 
+function RouteLoading() {
+  return (
+    <main className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F5F0E8' }}>
+      <span className="font-sans text-xs uppercase tracking-[0.2em]" style={{ color: '#7B3B4F' }}>
+        Loading
+      </span>
+    </main>
+  );
+}
+
 function App() {
   useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReducedMotion) return;
+    if (prefersReducedMotion()) return;
 
     const lenis = new Lenis({ lerp: 0.08, duration: 1.2, smoothWheel: true });
     lenis.on('scroll', ScrollTrigger.update);
@@ -39,13 +52,18 @@ function App() {
     <>
       <CustomCursor />
       <ScrollToTop />
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/velvet-ink" element={<VelvetInkPage />} />
-        <Route path="/written-word" element={<WrittenWordPage />} />
-        <Route path="/shop" element={<ShopPage />} />
-        <Route path="/admin" element={<AdminPage />} />
-      </Routes>
+      <Suspense fallback={<RouteLoading />}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/velvet-ink" element={<VelvetInkPage />} />
+          <Route path="/written-word" element={<WrittenWordPage />} />
+          <Route path="/shop" element={<ShopPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/privacy" element={<LegalPage type="privacy" />} />
+          <Route path="/terms" element={<LegalPage type="terms" />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
     </>
   );
 }

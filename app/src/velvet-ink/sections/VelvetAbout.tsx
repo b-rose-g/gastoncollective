@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -12,6 +13,11 @@ export default function VelvetAbout() {
   const quoteRef = useRef<HTMLQuoteElement>(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([headingRef.current, body1Ref.current, body2Ref.current, quoteRef.current]);
+      return;
+    }
+
     const ctx = gsap.context(() => {
       gsap.fromTo(
         headingRef.current,
@@ -117,6 +123,28 @@ export default function VelvetAbout() {
         >
           "Every mark I make is someone's forever. I don't take that lightly."
         </blockquote>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-16">
+          {[
+            { title: 'Service Area', body: 'By appointment in the Baton Rouge area, with exact studio details confirmed after booking.' },
+            { title: 'Availability', body: 'Weekday evenings and select weekends. Requests are reviewed before a final appointment is confirmed.' },
+            { title: 'Age Policy', body: 'Tattoos are 18+ with valid photo ID. Piercing requests follow local law and may require a parent or guardian.' },
+            { title: 'Deposits', body: 'A non-refundable deposit may be required to hold your time. Give at least 48 hours notice for reschedules.' },
+            { title: 'Pricing', body: 'Quotes depend on size, placement, detail, and prep time. Small simple pieces start with a studio minimum.' },
+            { title: 'Safety', body: 'Single-use needles, sterile setup, barrier protection, and licensing/safety information are available on request.' },
+            { title: 'Aftercare', body: 'Keep fresh work clean, lightly moisturized, and out of sun, pools, and soaking water while it heals.' },
+            { title: 'Consults', body: 'Share references, placement, size, and timing in the form so I can respond with next steps and a realistic quote.' },
+          ].map((item) => (
+            <div key={item.title} style={{ borderTop: '1px solid rgba(209, 74, 110, 0.35)', paddingTop: 18 }}>
+              <h3 className="font-serif" style={{ color: '#F4A5AE', fontSize: 22, fontWeight: 600 }}>
+                {item.title}
+              </h3>
+              <p className="font-sans mt-2" style={{ color: '#E8DDD4', opacity: 0.85, fontSize: 14, lineHeight: 1.75 }}>
+                {item.body}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

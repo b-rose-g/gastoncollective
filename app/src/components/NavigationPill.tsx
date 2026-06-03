@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ShoppingBag } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { prefersReducedMotion, scrollBehavior } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -21,6 +22,8 @@ export default function NavigationPill({ lenisRef }: NavigationPillProps) {
   const pillRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) return;
+
     const sections = ['hero', 'ethos', 'programs', 'shop'];
 
     sections.forEach((id) => {
@@ -47,6 +50,10 @@ export default function NavigationPill({ lenisRef }: NavigationPillProps) {
 
   useEffect(() => {
     if (!pillRef.current) return;
+    if (prefersReducedMotion()) {
+      pillRef.current.style.opacity = '1';
+      return;
+    }
     gsap.fromTo(
       pillRef.current,
       { y: -100, opacity: 0 },
@@ -55,8 +62,10 @@ export default function NavigationPill({ lenisRef }: NavigationPillProps) {
   }, []);
 
   const handleNavClick = (target: string) => {
-    if (lenisRef.current) {
+    if (lenisRef.current && !prefersReducedMotion()) {
       lenisRef.current.scrollTo(target);
+    } else {
+      document.querySelector(target)?.scrollIntoView({ behavior: scrollBehavior() });
     }
   };
 
@@ -85,6 +94,7 @@ export default function NavigationPill({ lenisRef }: NavigationPillProps) {
           return (
             <button
               key={item.label}
+              type="button"
               onClick={() => handleNavClick(item.target)}
               className="relative font-sans text-sm uppercase tracking-[0.1em] transition-colors duration-300 hover:opacity-100"
               style={{
@@ -109,6 +119,9 @@ export default function NavigationPill({ lenisRef }: NavigationPillProps) {
       </div>
 
       <button
+        type="button"
+        aria-label="Go to shop section"
+        onClick={() => handleNavClick('#shop')}
         className="flex items-center justify-center transition-opacity duration-300 hover:opacity-100"
         style={{
           color: '#F2F1ED',

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { trpc } from '@/providers/trpc';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -12,16 +13,27 @@ export default function WrittenContact() {
 
   const [formData, setFormData] = useState({ name: '', email: '', subject: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const createMessage = trpc.contact.create.useMutation({
     onSuccess: () => {
       setSubmitted(true);
+      setFormError(null);
       setFormData({ name: '', email: '', subject: '', message: '' });
       setTimeout(() => setSubmitted(false), 5000);
+    },
+    onError: (error) => {
+      setSubmitted(false);
+      setFormError(error.message || 'Your message could not be sent. Please try again.');
     },
   });
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([headingRef.current, formRef.current]);
+      return;
+    }
+
     const ctx = gsap.context(() => {
       gsap.fromTo(headingRef.current, { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 1, ease: 'power3.out', scrollTrigger: { trigger: sectionRef.current, start: 'top 80%' } });
       gsap.fromTo(formRef.current, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' } });
@@ -35,6 +47,8 @@ export default function WrittenContact() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitted(false);
+    setFormError(null);
     createMessage.mutate({
       name: formData.name,
       email: formData.email,
@@ -69,8 +83,9 @@ export default function WrittenContact() {
         <form ref={formRef} onSubmit={handleSubmit} className="opacity-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#3B2317', opacity: 0.6 }}>Name *</label>
+              <label htmlFor="written-contact-name" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#3B2317', opacity: 0.75 }}>Name *</label>
               <input
+                id="written-contact-name"
                 type="text"
                 name="name"
                 value={formData.name}
@@ -81,8 +96,9 @@ export default function WrittenContact() {
               />
             </div>
             <div>
-              <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#3B2317', opacity: 0.6 }}>Email *</label>
+              <label htmlFor="written-contact-email" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#3B2317', opacity: 0.75 }}>Email *</label>
               <input
+                id="written-contact-email"
                 type="email"
                 name="email"
                 value={formData.email}
@@ -95,8 +111,9 @@ export default function WrittenContact() {
           </div>
 
           <div className="mb-6">
-            <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#3B2317', opacity: 0.6 }}>Subject *</label>
+            <label htmlFor="written-contact-subject" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#3B2317', opacity: 0.75 }}>Subject *</label>
             <select
+              id="written-contact-subject"
               name="subject"
               value={formData.subject}
               onChange={handleChange}
@@ -115,8 +132,9 @@ export default function WrittenContact() {
           </div>
 
           <div className="mb-10">
-            <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#3B2317', opacity: 0.6 }}>Message *</label>
+            <label htmlFor="written-contact-message" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#3B2317', opacity: 0.75 }}>Message *</label>
             <textarea
+              id="written-contact-message"
               name="message"
               value={formData.message}
               onChange={handleChange}
@@ -141,6 +159,11 @@ export default function WrittenContact() {
             {submitted && (
               <p className="font-script" style={{ color: '#8B7355', fontSize: 20 }}>
                 Thank you for reaching out. I'll write back soon.
+              </p>
+            )}
+            {formError && (
+              <p role="alert" className="font-sans text-sm text-center" style={{ color: '#8A2F2F' }}>
+                {formError}
               </p>
             )}
           </div>

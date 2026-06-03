@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useNavigate } from 'react-router-dom';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -9,18 +10,24 @@ gsap.registerPlugin(ScrollTrigger);
 const PROGRAMS = [
   {
     image: '/images/tattoo_1.jpg',
+    width: 556,
+    height: 660,
     title: 'THE EXPERIENCE',
     description: 'Immersive storytelling that transcends the page.',
     link: '/velvet-ink',
   },
   {
     image: '/images/tattoo_4.jpg',
+    width: 957,
+    height: 1643,
     title: 'THE GAME',
     description: 'Interactive creative workshops and events.',
     link: '/written-word',
   },
   {
     image: '/images/tattoo_7.jpg',
+    width: 366,
+    height: 628,
     title: 'THE SYSTEM',
     description: 'Structured creative frameworks for artists.',
     link: '/shop',
@@ -35,6 +42,10 @@ export default function ProgramsSection() {
 
   useEffect(() => {
     if (!sectionRef.current) return;
+    if (prefersReducedMotion()) {
+      revealImmediately([titleRef.current, ...(cardsRef.current ? Array.from(cardsRef.current.querySelectorAll('.program-card')) : [])]);
+      return;
+    }
 
     const ctx = gsap.context(() => {
       gsap.fromTo(
@@ -87,6 +98,15 @@ export default function ProgramsSection() {
               key={i}
               className="program-card flex flex-col items-center gap-6 opacity-0 cursor-pointer"
               onClick={() => navigate(program.link)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate(program.link);
+                }
+              }}
+              role="link"
+              tabIndex={0}
+              aria-label={`Explore ${program.title}`}
               data-cursor-hover
             >
               {/* Image Container with Circle Morph */}
@@ -119,6 +139,9 @@ export default function ProgramsSection() {
                 <img
                   src={program.image}
                   alt={program.title}
+                  width={program.width}
+                  height={program.height}
+                  decoding="async"
                   className="w-full h-full object-cover"
                   style={{
                     clipPath: 'inset(0% round 20px)',

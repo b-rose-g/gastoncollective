@@ -2,12 +2,15 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
 const FEATURES = [
   {
     image: '/images/tattoo_2.jpg',
+    width: 780,
+    height: 1210,
     title: 'VELVET INK',
     accent: '#7B3B4F',
     heading: 'Art that stays with you',
@@ -17,7 +20,9 @@ const FEATURES = [
     imagePosition: 'left',
   },
   {
-    image: '/images/book_cover.jpg',
+    image: '/images/book_reach_for_the_stars.png',
+    width: 441,
+    height: 628,
     title: 'THE WRITTEN WORD',
     accent: '#BFA76A',
     heading: 'Words that linger',
@@ -33,6 +38,11 @@ export default function FeaturedShowcase() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately(Array.from(sectionRef.current?.querySelectorAll('.feature-image, .feature-text') ?? []));
+      return;
+    }
+
     const ctx = gsap.context(() => {
       document.querySelectorAll('.feature-row').forEach((row) => {
         gsap.fromTo(
@@ -77,7 +87,7 @@ export default function FeaturedShowcase() {
             className={`feature-row grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-20 items-center ${i > 0 ? 'mt-24 md:mt-32' : ''}`}
           >
             <div className={`feature-image relative opacity-0 ${f.imagePosition === 'right' ? 'md:order-2' : ''}`}>
-              <OffsetBorderImage src={f.image} accent={f.accent} />
+              <OffsetBorderImage src={f.image} width={f.width} height={f.height} accent={f.accent} />
             </div>
             <div className={`feature-text opacity-0 ${f.imagePosition === 'right' ? 'md:order-1' : ''}`}>
               <span
@@ -139,7 +149,7 @@ export default function FeaturedShowcase() {
   );
 }
 
-function OffsetBorderImage({ src, accent }: { src: string; accent: string }) {
+function OffsetBorderImage({ src, width, height, accent }: { src: string; width: number; height: number; accent: string }) {
   return (
     <div className="relative group cursor-pointer" data-cursor-hover>
       <div
@@ -155,6 +165,9 @@ function OffsetBorderImage({ src, accent }: { src: string; accent: string }) {
         <img
           src={src}
           alt=""
+          width={width}
+          height={height}
+          decoding="async"
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
           loading="lazy"
         />

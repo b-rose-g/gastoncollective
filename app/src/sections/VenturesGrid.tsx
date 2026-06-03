@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Sparkles, Feather, ShoppingBag } from 'lucide-react';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -16,6 +17,8 @@ const VENTURES = [
     icon: Sparkles,
     href: '/velvet-ink',
     image: '/images/tattoo_2.jpg',
+    width: 780,
+    height: 1210,
   },
   {
     title: 'THE WRITTEN WORD',
@@ -25,7 +28,9 @@ const VENTURES = [
     previewText: '#3B2317',
     icon: Feather,
     href: '/written-word',
-    image: '/images/book_cover.jpg',
+    image: '/images/book_reach_for_the_stars.png',
+    width: 441,
+    height: 628,
   },
   {
     title: 'THE SHOP',
@@ -36,6 +41,8 @@ const VENTURES = [
     icon: ShoppingBag,
     href: '/shop',
     image: '/images/sticker_pdf_page_3.jpg',
+    width: 851,
+    height: 851,
   },
 ];
 
@@ -46,6 +53,11 @@ export default function VenturesGrid() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([headingRef.current, ...(panelsRef.current ? Array.from(panelsRef.current.querySelectorAll('.venture-panel')) : [])]);
+      return;
+    }
+
     const ctx = gsap.context(() => {
       gsap.fromTo(
         headingRef.current,
@@ -135,6 +147,7 @@ function VenturePanel({
       onClick={onNavigate}
       data-cursor-hover
       role="link"
+      aria-label={`Explore ${venture.title}`}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -155,6 +168,9 @@ function VenturePanel({
         <img
           src={venture.image}
           alt={venture.title}
+          width={venture.width}
+          height={venture.height}
+          decoding="async"
           className="w-full h-full object-cover transition-transform duration-700"
           style={{ transform: isHovered ? 'scale(1.05)' : 'scale(1)' }}
           loading="lazy"

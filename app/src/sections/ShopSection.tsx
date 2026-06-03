@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -21,6 +22,11 @@ export default function ShopSection() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([titleRef.current, ...(gridRef.current ? Array.from(gridRef.current.querySelectorAll('.shop-item')) : [])]);
+      return;
+    }
+
     const ctx = gsap.context(() => {
       gsap.fromTo(titleRef.current, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out', scrollTrigger: { trigger: sectionRef.current, start: 'top 80%' } });
       if (gridRef.current) {
@@ -78,7 +84,7 @@ export default function ShopSection() {
                 onMouseEnter={() => setActiveIndex(i)}
                 onMouseLeave={() => setActiveIndex(null)}
               >
-                <img src={item.image} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
+                <img src={item.image} alt={item.title} width={851} height={851} decoding="async" className="w-full h-full object-cover" loading="lazy" />
                 <div
                   className="absolute inset-0 flex flex-col items-center justify-end p-4 transition-opacity duration-400"
                   style={{

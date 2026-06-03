@@ -1,17 +1,24 @@
 import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ShoppingBag } from 'lucide-react';
+import { prefersReducedMotion, scrollBehavior } from '@/lib/motion';
 
 export default function NavigationPill() {
   const pillRef = useRef<HTMLElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!pillRef.current) return;
+    if (prefersReducedMotion()) {
+      pillRef.current.style.opacity = '1';
+      return;
+    }
     gsap.fromTo(pillRef.current, { y: -100, opacity: 0 }, { y: 0, opacity: 1, duration: 1, delay: 0.5, ease: 'power3.out' });
   }, []);
 
   const scrollTo = (target: string) => {
-    document.querySelector(target)?.scrollIntoView({ behavior: 'smooth' });
+    document.querySelector(target)?.scrollIntoView({ behavior: scrollBehavior() });
   };
 
   return (
@@ -26,6 +33,7 @@ export default function NavigationPill() {
         ].map((item) => (
           <button
             key={item.label}
+            type="button"
             onClick={() => scrollTo(item.target)}
             className="font-sans text-sm uppercase tracking-[0.1em] transition-opacity duration-300 hover:opacity-100"
             style={{ color: '#BFA76A', opacity: 0.8, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -34,7 +42,12 @@ export default function NavigationPill() {
           </button>
         ))}
       </div>
-      <button style={{ color: '#F5F0E8', opacity: 0.8, background: 'none', border: 'none', cursor: 'pointer' }}>
+      <button
+        type="button"
+        aria-label="Go to shop"
+        onClick={() => navigate('/shop')}
+        style={{ color: '#F5F0E8', opacity: 0.8, background: 'none', border: 'none', cursor: 'pointer' }}
+      >
         <ShoppingBag size={18} strokeWidth={1.5} />
       </button>
     </nav>

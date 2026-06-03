@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { createRouter, publicQuery } from "../middleware";
+import { createRouter, protectedQuery, publicQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { contactMessages } from "@db/schema";
 import { eq } from "drizzle-orm";
 
 export const contactRouter = createRouter({
-  list: publicQuery.query(async () => {
+  list: protectedQuery.query(async () => {
     const db = getDb();
     return db.select().from(contactMessages).orderBy(contactMessages.createdAt);
   }),
@@ -25,7 +25,7 @@ export const contactRouter = createRouter({
       return { success: true };
     }),
 
-  markRead: publicQuery
+  markRead: protectedQuery
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = getDb();

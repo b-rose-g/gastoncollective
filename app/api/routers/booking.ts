@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { createRouter, publicQuery } from "../middleware";
+import { createRouter, protectedQuery, publicQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { tattooBookings } from "@db/schema";
 import { eq } from "drizzle-orm";
 
 export const bookingRouter = createRouter({
-  list: publicQuery.query(async () => {
+  list: protectedQuery.query(async () => {
     const db = getDb();
     return db.select().from(tattooBookings).orderBy(tattooBookings.createdAt);
   }),
@@ -29,7 +29,7 @@ export const bookingRouter = createRouter({
       return { success: true };
     }),
 
-  updateStatus: publicQuery
+  updateStatus: protectedQuery
     .input(
       z.object({
         id: z.number(),
@@ -45,7 +45,7 @@ export const bookingRouter = createRouter({
       return { success: true };
     }),
 
-  addNotes: publicQuery
+  addNotes: protectedQuery
     .input(z.object({ id: z.number(), notes: z.string() }))
     .mutation(async ({ input }) => {
       const db = getDb();

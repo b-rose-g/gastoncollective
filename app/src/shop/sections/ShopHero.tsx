@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 const LINE1 = 'THE SHOP';
 
@@ -10,6 +11,12 @@ export default function ShopHero() {
   const lineRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([...charsRef.current, taglineRef.current, lineRef.current]);
+      if (lineRef.current) lineRef.current.style.transform = 'scaleX(1)';
+      return;
+    }
+
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ delay: 0.2 });
 

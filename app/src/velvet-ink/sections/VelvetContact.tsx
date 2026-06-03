@@ -4,6 +4,8 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Upload, X } from 'lucide-react';
 import DateTimePicker from '../components/DateTimePicker';
 import { trpc } from '@/providers/trpc';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
+import { uploadReferenceImages } from '@/lib/uploads';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -30,10 +32,13 @@ export default function VelvetContact() {
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const createBooking = trpc.booking.create.useMutation({
     onSuccess: () => {
       setSubmitted(true);
+      setFormError(null);
       setFormData({ name: '', email: '', phone: '', description: '', size: '', placement: '' });
       setDateSelections([]);
       setFiles([]);
@@ -42,6 +47,11 @@ export default function VelvetContact() {
   });
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([headingRef.current, formRef.current]);
+      return;
+    }
+
     const ctx = gsap.context(() => {
       gsap.fromTo(
         headingRef.current,
@@ -85,19 +95,36 @@ export default function VelvetContact() {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const preferredDates = dateSelections.map((d) => `${d.date} ${d.time}`).join('; ');
-    createBooking.mutate({
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone || undefined,
-      description: formData.description,
-      size: formData.size || undefined,
-      placement: formData.placement || undefined,
-      preferredDates: preferredDates || undefined,
-      referenceImages: files.length > 0 ? files.map((f) => f.name).join(', ') : undefined,
-    });
+    setSubmitted(false);
+    setFormError(null);
+
+    if (dateSelections.length === 0) {
+      setFormError('Please choose at least one preferred date and time.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const uploaded = await uploadReferenceImages(files);
+      const preferredDates = dateSelections.map((d) => `${d.date} ${d.time}`).join('; ');
+      await createBooking.mutateAsync({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || undefined,
+        description: formData.description,
+        size: formData.size || undefined,
+        placement: formData.placement || undefined,
+        preferredDates: preferredDates || undefined,
+        referenceImages: uploaded.length > 0 ? JSON.stringify(uploaded) : undefined,
+      });
+    } catch (error) {
+      setSubmitted(false);
+      setFormError(error instanceof Error ? error.message : 'Your booking request could not be sent. Please try again.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -140,10 +167,11 @@ export default function VelvetContact() {
           {/* Name + Contact Row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.6 }}>
+              <label htmlFor="velvet-booking-name" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
                 Name *
               </label>
               <input
+                id="velvet-booking-name"
                 type="text"
                 name="name"
                 value={formData.name}
@@ -159,10 +187,11 @@ export default function VelvetContact() {
               />
             </div>
             <div>
-              <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.6 }}>
+              <label htmlFor="velvet-booking-email" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
                 Email *
               </label>
               <input
+                id="velvet-booking-email"
                 type="email"
                 name="email"
                 value={formData.email}
@@ -181,10 +210,11 @@ export default function VelvetContact() {
 
           {/* Phone */}
           <div className="mb-6">
-            <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.6 }}>
+            <label htmlFor="velvet-booking-phone" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
               Phone
             </label>
             <input
+              id="velvet-booking-phone"
               type="tel"
               name="phone"
               value={formData.phone}
@@ -201,10 +231,11 @@ export default function VelvetContact() {
 
           {/* Description */}
           <div className="mb-6">
-            <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.6 }}>
+            <label htmlFor="velvet-booking-description" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
               Describe what you want *
             </label>
             <textarea
+              id="velvet-booking-description"
               name="description"
               value={formData.description}
               onChange={handleChange}
@@ -224,10 +255,11 @@ export default function VelvetContact() {
           {/* Size + Placement Row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
             <div>
-              <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.6 }}>
+              <label htmlFor="velvet-booking-size" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
                 Approximate Size
               </label>
               <input
+                id="velvet-booking-size"
                 type="text"
                 name="size"
                 value={formData.size}
@@ -243,10 +275,11 @@ export default function VelvetContact() {
               />
             </div>
             <div>
-              <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.6 }}>
+              <label htmlFor="velvet-booking-placement" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
                 Placement
               </label>
               <input
+                id="velvet-booking-placement"
                 type="text"
                 name="placement"
                 value={formData.placement}
@@ -265,9 +298,9 @@ export default function VelvetContact() {
 
           {/* Date & Time Calendar Picker */}
           <div className="mb-10 p-6 md:p-8" style={{ border: '1px solid #1A1A1A' }}>
-            <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-6" style={{ color: '#E8DDD4', opacity: 0.6 }}>
+            <p id="velvet-date-picker-label" className="font-sans text-xs uppercase tracking-[0.15em] block mb-6" style={{ color: '#E8DDD4', opacity: 0.75 }}>
               Preferred Dates & Times (pick up to 3) *
-            </label>
+            </p>
             <DateTimePicker
               selections={dateSelections}
               onChange={setDateSelections}
@@ -276,7 +309,7 @@ export default function VelvetContact() {
 
           {/* File Upload */}
           <div className="mb-10">
-            <label className="font-sans text-xs uppercase tracking-[0.15em] block mb-3" style={{ color: '#E8DDD4', opacity: 0.6 }}>
+            <label htmlFor="file-input" className="font-sans text-xs uppercase tracking-[0.15em] block mb-3" style={{ color: '#E8DDD4', opacity: 0.75 }}>
               Reference Photos (optional, max 5)
             </label>
             <div
@@ -284,6 +317,15 @@ export default function VelvetContact() {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleFileDrop}
               onClick={() => document.getElementById('file-input')?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  document.getElementById('file-input')?.click();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-controls="file-input"
               className="relative flex flex-col items-center justify-center py-10 px-6 cursor-pointer transition-all duration-300"
               style={{
                 border: dragOver ? '1px dashed #D14A6E' : '1px dashed #1A1A1A',
@@ -301,6 +343,7 @@ export default function VelvetContact() {
                 accept="image/*"
                 multiple
                 onChange={handleFileSelect}
+                aria-label="Upload tattoo reference photos"
                 className="hidden"
               />
             </div>
@@ -313,12 +356,16 @@ export default function VelvetContact() {
                     <img
                       src={URL.createObjectURL(file)}
                       alt={file.name}
+                      width={80}
+                      height={80}
+                      decoding="async"
                       className="w-full h-full object-cover"
                       style={{ border: '1px solid #1A1A1A' }}
                     />
                     <button
                       type="button"
                       onClick={() => removeFile(i)}
+                      aria-label={`Remove reference photo ${file.name}`}
                       className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                       style={{ backgroundColor: '#D14A6E', color: '#fff', border: 'none', cursor: 'pointer' }}
                     >
@@ -334,7 +381,7 @@ export default function VelvetContact() {
           <div className="flex flex-col items-center gap-4">
             <button
               type="submit"
-              disabled={createBooking.isPending}
+              disabled={createBooking.isPending || uploading}
               className="font-sans text-xs uppercase tracking-[0.2em] px-12 py-4 border transition-all duration-300 hover:bg-[#D14A6E] hover:text-[#0A0A0A] hover:border-[#D14A6E] disabled:opacity-50"
               style={{
                 color: '#D14A6E',
@@ -343,12 +390,17 @@ export default function VelvetContact() {
               }}
               data-cursor-hover
             >
-              {createBooking.isPending ? 'Sending...' : submitted ? 'Sent! We will be in touch.' : 'Submit Request'}
+              {createBooking.isPending || uploading ? 'Sending...' : submitted ? 'Sent! We will be in touch.' : 'Submit Request'}
             </button>
 
             {submitted && (
               <p className="font-script" style={{ color: '#F4A5AE', fontSize: 20 }}>
                 Your request is in. I'll reach out within 48 hours.
+              </p>
+            )}
+            {formError && (
+              <p role="alert" className="font-sans text-sm text-center" style={{ color: '#F4A5AE' }}>
+                {formError}
               </p>
             )}
           </div>

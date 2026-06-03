@@ -7,12 +7,16 @@ import ShopProducts from '../shop/sections/ShopProducts';
 import ShopCommission from '../shop/sections/ShopCommission';
 import ShopContact from '../shop/sections/ShopContact';
 import ShopFooter from '../shop/sections/ShopFooter';
+import { prefersReducedMotion } from '@/lib/motion';
+import { routeMetadata, usePageMetadata } from '@/lib/seo';
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function ShopPage() {
+  usePageMetadata(routeMetadata.shop);
+
   useEffect(() => {
-    ScrollTrigger.refresh();
+    if (!prefersReducedMotion()) ScrollTrigger.refresh();
   }, []);
 
   return (

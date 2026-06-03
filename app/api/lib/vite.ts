@@ -6,18 +6,19 @@ import path from "path";
 
 type App = Hono<{ Bindings: HttpBindings }>;
 
-export function serveStaticFiles(app: App) {
+export function serveStaticFiles(app: App, appRoutes: Set<string>) {
   const distPath = path.resolve(import.meta.dirname, "../dist/public");
 
   app.use("*", serveStatic({ root: "./dist/public" }));
 
   app.notFound((c) => {
+    const url = new URL(c.req.url);
     const accept = c.req.header("accept") ?? "";
     if (!accept.includes("text/html")) {
       return c.json({ error: "Not Found" }, 404);
     }
     const indexPath = path.resolve(distPath, "index.html");
     const content = fs.readFileSync(indexPath, "utf-8");
-    return c.html(content);
+    return c.html(content, appRoutes.has(url.pathname) ? 200 : 404);
   });
 }

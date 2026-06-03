@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -12,6 +13,11 @@ export default function FooterSection() {
   const linksRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([titleRef.current, scriptRef.current, linksRef.current]);
+      return;
+    }
+
     const ctx = gsap.context(() => {
       gsap.fromTo(titleRef.current, { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 1, ease: 'power3.out', scrollTrigger: { trigger: sectionRef.current, start: 'top 80%' } });
       gsap.fromTo(scriptRef.current, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power2.out', scrollTrigger: { trigger: sectionRef.current, start: 'top 75%' } });
@@ -63,28 +69,41 @@ export default function FooterSection() {
         <div ref={linksRef} className="flex flex-col items-center gap-6 opacity-0">
           <div className="flex items-center gap-8">
             {[
-              { label: 'Instagram', href: '#' },
-              { label: 'Contact', href: '#' },
-              { label: 'Privacy', href: '#' },
+              { label: 'Email', href: 'mailto:hello@gastoncollective.com' },
+              { label: 'Contact', href: '/written-word#contact' },
             ].map((link) => (
               <a
                 key={link.label}
                 href={link.href}
                 className="font-sans text-sm transition-opacity duration-300 hover:opacity-100"
-                style={{ color: '#F5F0E8', opacity: 0.5, textDecoration: 'none' }}
+                style={{ color: '#F5F0E8', opacity: 0.65, textDecoration: 'none' }}
               >
                 {link.label}
               </a>
             ))}
             <Link
+              to="/privacy"
+              className="font-sans text-sm transition-opacity duration-300 hover:opacity-100"
+              style={{ color: '#F5F0E8', opacity: 0.65, textDecoration: 'none' }}
+            >
+              Privacy
+            </Link>
+            <Link
+              to="/terms"
+              className="font-sans text-sm transition-opacity duration-300 hover:opacity-100"
+              style={{ color: '#F5F0E8', opacity: 0.65, textDecoration: 'none' }}
+            >
+              Terms
+            </Link>
+            <Link
               to="/admin"
               className="font-sans text-sm transition-opacity duration-300 hover:opacity-100"
-              style={{ color: '#F5F0E8', opacity: 0.15, textDecoration: 'none' }}
+              style={{ color: '#F5F0E8', opacity: 0.35, textDecoration: 'none' }}
             >
               Admin
             </Link>
           </div>
-          <p className="font-sans text-xs" style={{ color: '#F5F0E8', opacity: 0.2 }}>
+          <p className="font-sans text-xs" style={{ color: '#F5F0E8', opacity: 0.55 }}>
             2026 The Gaston Collective. All rights reserved.
           </p>
         </div>

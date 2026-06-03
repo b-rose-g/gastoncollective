@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
+import { prefersReducedMotion, revealImmediately, scrollBehavior } from '@/lib/motion';
 
 const TITLE_CHARS = 'VELVET INK'.split('');
 
@@ -11,6 +12,12 @@ export default function VelvetHero() {
   const ctaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      revealImmediately([...charsRef.current, taglineRef.current, lineRef.current, ctaRef.current]);
+      if (lineRef.current) lineRef.current.style.transform = 'scaleX(1)';
+      return;
+    }
+
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({ delay: 0.2 });
 
@@ -54,7 +61,7 @@ export default function VelvetHero() {
 
   const scrollToBook = () => {
     const el = document.querySelector('#book');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
+    if (el) el.scrollIntoView({ behavior: scrollBehavior() });
   };
 
   return (
