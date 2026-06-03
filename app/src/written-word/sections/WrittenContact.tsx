@@ -149,7 +149,7 @@ export default function WrittenContact() {
           </div>
 
           <div className="flex flex-col items-center gap-4">
-              <button
+            <button
               type="submit"
               disabled={isSubmitting}
               className="font-sans text-xs uppercase tracking-[0.2em] px-12 py-4 border transition-all duration-300 hover:bg-[#A67B5B] hover:text-[#FAF8F4] hover:border-[#A67B5B] disabled:opacity-50"
