@@ -16,9 +16,9 @@ const VENTURES = [
     previewText: '#D14A6E',
     icon: Sparkles,
     href: '/velvet-ink',
-    image: '/images/tattoo_2.jpg',
-    width: 780,
-    height: 1210,
+    image: '/images/tattoo_5.jpg',
+    width: 529,
+    height: 1197,
   },
   {
     title: 'THE WRITTEN WORD',

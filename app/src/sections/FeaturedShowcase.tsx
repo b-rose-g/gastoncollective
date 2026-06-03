@@ -8,9 +8,9 @@ gsap.registerPlugin(ScrollTrigger);
 
 const FEATURES = [
   {
-    image: '/images/tattoo_2.jpg',
-    width: 780,
-    height: 1210,
+    image: '/images/tattoo_6.jpg',
+    width: 670,
+    height: 1126,
     title: 'VELVET INK',
     accent: '#7B3B4F',
     heading: 'Art that stays with you',
