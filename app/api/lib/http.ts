@@ -47,14 +47,18 @@ export class HttpClient {
 
       clearTimeout(timeoutId);
 
+      const contentType = response.headers.get("content-type") || "";
+      const isJson = contentType.includes("application/json");
+      const responseText = await response.text();
+      const data = isJson && responseText.trim()
+        ? JSON.parse(responseText) as Record<string, any>
+        : null;
+
       if (!response.ok) {
-        const errorData = (await response
-          .json()
-          .catch(() => ({}))) as Record<string, string>;
-        throw new Error(errorData.message || `HTTP Error: ${response.status}`);
+        throw new Error(data?.message || `HTTP Error: ${response.status}`);
       }
 
-      return (await response.json()) as T;
+      return data as T;
     } catch (error: any) {
       if (error.name === "AbortError") {
         throw new Error("Request timeout");

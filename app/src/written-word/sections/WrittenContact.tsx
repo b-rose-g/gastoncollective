@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { trpc } from '@/providers/trpc';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
+import { submitContactMessage } from '@/lib/contactMessages';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -14,19 +14,7 @@ export default function WrittenContact() {
   const [formData, setFormData] = useState({ name: '', email: '', subject: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-
-  const createMessage = trpc.contact.create.useMutation({
-    onSuccess: () => {
-      setSubmitted(true);
-      setFormError(null);
-      setFormData({ name: '', email: '', subject: '', message: '' });
-      setTimeout(() => setSubmitted(false), 5000);
-    },
-    onError: (error) => {
-      setSubmitted(false);
-      setFormError(error.message || 'Your message could not be sent. Please try again.');
-    },
-  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
@@ -45,16 +33,30 @@ export default function WrittenContact() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(false);
     setFormError(null);
-    createMessage.mutate({
-      name: formData.name,
-      email: formData.email,
-      subject: formData.subject || formData.message.slice(0, 50),
-      message: formData.message,
-    });
+    setIsSubmitting(true);
+
+    try {
+      await submitContactMessage({
+        name: formData.name,
+        email: formData.email,
+        phone: null,
+        subject: formData.subject || formData.message.slice(0, 50),
+        message: formData.message,
+        source: 'written-word',
+      });
+      setSubmitted(true);
+      setFormData({ name: '', email: '', subject: '', message: '' });
+      setTimeout(() => setSubmitted(false), 5000);
+    } catch (error) {
+      setSubmitted(false);
+      setFormError(error instanceof Error ? error.message : 'Your message could not be sent. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -147,14 +149,14 @@ export default function WrittenContact() {
           </div>
 
           <div className="flex flex-col items-center gap-4">
-            <button
+              <button
               type="submit"
-              disabled={createMessage.isPending}
+              disabled={isSubmitting}
               className="font-sans text-xs uppercase tracking-[0.2em] px-12 py-4 border transition-all duration-300 hover:bg-[#A67B5B] hover:text-[#FAF8F4] hover:border-[#A67B5B] disabled:opacity-50"
               style={{ color: '#A67B5B', borderColor: '#A67B5B', backgroundColor: 'transparent' }}
               data-cursor-hover
             >
-              {createMessage.isPending ? 'Sending...' : submitted ? 'Message sent!' : 'Send Message'}
+              {isSubmitting ? 'Sending...' : submitted ? 'Message sent!' : 'Send Message'}
             </button>
             {submitted && (
               <p className="font-script" style={{ color: '#8B7355', fontSize: 20 }}>
