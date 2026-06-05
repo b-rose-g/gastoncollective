@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Upload, X } from 'lucide-react';
-import { trpc } from '@/providers/trpc';
+import { submitCommissionInquiry } from '@/lib/inquiries';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
-import { uploadReferenceImages } from '@/lib/uploads';
+import { REFERENCE_IMAGE_ACCEPT, getReferenceImageValidationError, uploadReferenceImages } from '@/lib/uploads';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -16,26 +16,19 @@ export default function ShopCommission() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     commissionType: '',
     description: '',
     size: '',
     budget: '',
+    deadline: '',
   });
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  const createCommission = trpc.commission.create.useMutation({
-    onSuccess: () => {
-      setSubmitted(true);
-      setFormError(null);
-      setFormData({ name: '', email: '', commissionType: '', description: '', size: '', budget: '' });
-      setFiles([]);
-      setTimeout(() => setSubmitted(false), 5000);
-    },
-  });
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
@@ -54,19 +47,34 @@ export default function ShopCommission() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const addReferenceFiles = (incoming: File[]) => {
+    if (incoming.length === 0) return;
+
+    const nextFiles = [...files, ...incoming];
+    const validationError = getReferenceImageValidationError(nextFiles);
+
+    if (validationError) {
+      setFileError(validationError);
+      return;
+    }
+
+    setFileError(null);
+    setFiles(nextFiles);
+  };
+
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const dropped = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-    setFiles((prev) => [...prev, ...dropped].slice(0, 3));
+    addReferenceFiles(Array.from(e.dataTransfer.files));
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
-    setFiles((prev) => [...prev, ...selected].slice(0, 3));
+    addReferenceFiles(Array.from(e.currentTarget.files || []));
+    e.currentTarget.value = '';
   };
 
   const removeFile = (index: number) => {
+    setFileError(null);
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -74,24 +82,40 @@ export default function ShopCommission() {
     e.preventDefault();
     setSubmitted(false);
     setFormError(null);
-    setUploading(true);
+
+    const validationError = getReferenceImageValidationError(files);
+    if (validationError) {
+      setFileError(validationError);
+      return;
+    }
+
+    setFileError(null);
+    setIsSubmitting(true);
 
     try {
       const uploaded = await uploadReferenceImages(files);
-      await createCommission.mutateAsync({
+      await submitCommissionInquiry({
         name: formData.name,
         email: formData.email,
+        phone: formData.phone,
         commissionType: formData.commissionType,
         description: formData.description,
-        size: formData.size || undefined,
-        budget: formData.budget || undefined,
-        referenceImages: uploaded.length > 0 ? JSON.stringify(uploaded) : undefined,
+        sizeRequest: formData.size,
+        budget: formData.budget,
+        deadline: formData.deadline,
+        referenceLinks: uploaded,
       });
+      setSubmitted(true);
+      setFormError(null);
+      setFileError(null);
+      setFormData({ name: '', email: '', phone: '', commissionType: '', description: '', size: '', budget: '', deadline: '' });
+      setFiles([]);
+      setTimeout(() => setSubmitted(false), 5000);
     } catch (error) {
       setSubmitted(false);
       setFormError(error instanceof Error ? error.message : 'Your commission request could not be sent. Please try again.');
     } finally {
-      setUploading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -121,6 +145,21 @@ export default function ShopCommission() {
               <input id="commission-email" type="email" name="email" value={formData.email} onChange={handleChange} required
                 className="w-full px-0 py-3 font-sans text-base bg-transparent border-b outline-none transition-colors duration-300 focus:border-[#D4B8E0]"
                 style={{ color: '#5A4A6E', borderColor: '#E8DDD0', borderBottomWidth: 1, borderBottomStyle: 'solid' }} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div>
+              <label htmlFor="commission-phone" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#5A4A6E', opacity: 0.75 }}>Phone</label>
+              <input id="commission-phone" type="tel" name="phone" value={formData.phone} onChange={handleChange}
+                className="w-full px-0 py-3 font-sans text-base bg-transparent border-b outline-none transition-colors duration-300 focus:border-[#D4B8E0]"
+                style={{ color: '#5A4A6E', borderColor: '#E8DDD0', borderBottomWidth: 1, borderBottomStyle: 'solid' }} />
+            </div>
+            <div>
+              <label htmlFor="commission-deadline" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#5A4A6E', opacity: 0.75 }}>Deadline</label>
+              <input id="commission-deadline" type="date" name="deadline" value={formData.deadline} onChange={handleChange}
+                className="w-full px-0 py-3 font-sans text-base bg-transparent border-b outline-none transition-colors duration-300 focus:border-[#D4B8E0]"
+                style={{ color: formData.deadline ? '#5A4A6E' : '#A89B8C', borderColor: '#E8DDD0', borderBottomWidth: 1, borderBottomStyle: 'solid' }} />
             </div>
           </div>
 
@@ -165,7 +204,7 @@ export default function ShopCommission() {
 
           {/* File Upload */}
           <div className="mb-10">
-            <label htmlFor="commission-file-input" className="font-sans text-xs uppercase tracking-[0.15em] block mb-3" style={{ color: '#5A4A6E', opacity: 0.75 }}>Reference Images (optional, max 3)</label>
+            <label htmlFor="commission-file-input" className="font-sans text-xs uppercase tracking-[0.15em] block mb-3" style={{ color: '#5A4A6E', opacity: 0.75 }}>Reference Images (optional, max 5)</label>
             <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={handleFileDrop}
               onClick={() => document.getElementById('commission-file-input')?.click()}
               onKeyDown={(e) => {
@@ -181,9 +220,14 @@ export default function ShopCommission() {
               style={{ border: dragOver ? '1px dashed #D4B8E0' : '1px dashed #E8DDD0', backgroundColor: dragOver ? 'rgba(212, 184, 224, 0.08)' : 'transparent', borderRadius: 12 }}
               data-cursor-hover>
               <Upload size={24} style={{ color: '#D4B8E0', opacity: 0.6 }} />
-              <p className="font-sans text-sm mt-3" style={{ color: '#7A6B8A', opacity: 0.6 }}>Drag & drop images here or click to browse</p>
-              <input id="commission-file-input" type="file" accept="image/*" multiple onChange={handleFileSelect} aria-label="Upload commission reference images" className="hidden" />
+              <p className="font-sans text-sm mt-3" style={{ color: '#7A6B8A', opacity: 0.6 }}>JPG, PNG, or WebP. Up to 5 files, 5 MB each.</p>
+              <input id="commission-file-input" type="file" accept={REFERENCE_IMAGE_ACCEPT} multiple onChange={handleFileSelect} aria-label="Upload commission reference images" className="hidden" />
             </div>
+            {fileError && (
+              <p role="alert" className="font-sans text-sm mt-3" style={{ color: '#7A2F4B' }}>
+                {fileError}
+              </p>
+            )}
             {files.length > 0 && (
               <div className="flex flex-wrap gap-3 mt-4">
                 {files.map((file, i) => (
@@ -202,10 +246,10 @@ export default function ShopCommission() {
           </div>
 
           <div className="flex flex-col items-center gap-4">
-            <button type="submit" disabled={createCommission.isPending || uploading}
+            <button type="submit" disabled={isSubmitting}
               className="font-sans text-xs uppercase tracking-[0.2em] px-12 py-4 border transition-all duration-300 hover:bg-[#A67B5B] hover:text-[#FFF8E7] hover:border-[#A67B5B] disabled:opacity-50"
               style={{ color: '#A67B5B', borderColor: '#A67B5B', backgroundColor: 'transparent' }} data-cursor-hover>
-              {createCommission.isPending || uploading ? 'Sending...' : submitted ? 'Request Sent!' : 'Submit Request'}
+              {isSubmitting ? 'Sending...' : submitted ? 'Request Sent!' : 'Submit Request'}
             </button>
             {submitted && (
               <p className="font-script" style={{ color: '#D4B8E0', fontSize: 20 }}>Thank you! I'll review your request and get back to you soon.</p>

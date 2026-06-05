@@ -1,3 +1,5 @@
+import { supabase } from "./supabase";
+
 export type UploadedReference = {
   name: string;
   url: string;
@@ -5,34 +7,80 @@ export type UploadedReference = {
   type: string;
 };
 
-async function readJsonIfPresent<T>(response: Response): Promise<T | null> {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) return null;
+export const REFERENCE_IMAGE_MAX_FILES = 5;
+export const REFERENCE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const REFERENCE_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp";
 
-  const text = await response.text();
-  if (!text.trim()) return null;
+const imageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const storageBucket = String(import.meta.env.VITE_SUPABASE_REFERENCE_BUCKET ?? "").trim() || "reference-images";
 
-  return JSON.parse(text) as T;
+function cleanFileName(name: string) {
+  const cleaned = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned || "reference-image";
+}
+
+function uniqueStoragePath(file: File) {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `form-references/${id}-${cleanFileName(file.name)}`;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return count === 1 ? singular : plural;
+}
+
+export function getReferenceImageValidationError(files: File[]) {
+  if (files.length > REFERENCE_IMAGE_MAX_FILES) {
+    const overLimit = files.length - REFERENCE_IMAGE_MAX_FILES;
+    return `You can upload up to ${REFERENCE_IMAGE_MAX_FILES} reference images. Please remove ${overLimit} ${pluralize(overLimit, "file")} and try again.`;
+  }
+
+  const unsupported = files.find((file) => !imageTypes.has(file.type));
+  if (unsupported) {
+    return `"${unsupported.name}" is not a supported file type. Please upload a JPG, PNG, or WebP image.`;
+  }
+
+  const tooLarge = files.find((file) => file.size > REFERENCE_IMAGE_MAX_BYTES);
+  if (tooLarge) {
+    return `"${tooLarge.name}" is too large. Reference images must be 5 MB or smaller.`;
+  }
+
+  return null;
 }
 
 export async function uploadReferenceImages(files: File[]): Promise<UploadedReference[]> {
   if (files.length === 0) return [];
 
-  const body = new FormData();
-  files.forEach((file) => body.append("files", file));
-
-  const response = await fetch("/api/uploads", {
-    method: "POST",
-    body,
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const payload = await readJsonIfPresent<{ error?: string }>(response).catch(() => null);
-    throw new Error(payload?.error || "Image upload failed. Please try again.");
+  const validationError = getReferenceImageValidationError(files);
+  if (validationError) {
+    throw new Error(validationError);
   }
 
-  const payload = await readJsonIfPresent<{ files?: UploadedReference[] }>(response).catch(() => null);
+  const uploaded: UploadedReference[] = [];
 
-  return payload?.files ?? [];
+  for (const file of files) {
+    const path = uniqueStoragePath(file);
+    const { data, error } = await supabase.storage.from(storageBucket).upload(path, file, {
+      cacheControl: "31536000",
+      contentType: file.type,
+      upsert: false,
+    });
+
+    if (error) {
+      console.error("Supabase reference image upload failed", {
+        bucket: storageBucket,
+        message: error.message,
+      });
+      throw new Error("Reference images could not be uploaded. Please try again.");
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(storageBucket).getPublicUrl(data.path);
+    uploaded.push({
+      name: file.name,
+      url: publicUrlData.publicUrl,
+      size: file.size,
+      type: file.type,
+    });
+  }
+
+  return uploaded;
 }

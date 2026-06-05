@@ -3,9 +3,9 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Upload, X } from 'lucide-react';
 import DateTimePicker from '../components/DateTimePicker';
-import { trpc } from '@/providers/trpc';
+import { submitBookingInquiry } from '@/lib/inquiries';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
-import { uploadReferenceImages } from '@/lib/uploads';
+import { REFERENCE_IMAGE_ACCEPT, getReferenceImageValidationError, uploadReferenceImages } from '@/lib/uploads';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -27,24 +27,16 @@ export default function VelvetContact() {
     description: '',
     size: '',
     placement: '',
+    budget: '',
+    message: '',
   });
   const [dateSelections, setDateSelections] = useState<TimeSelection[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  const createBooking = trpc.booking.create.useMutation({
-    onSuccess: () => {
-      setSubmitted(true);
-      setFormError(null);
-      setFormData({ name: '', email: '', phone: '', description: '', size: '', placement: '' });
-      setDateSelections([]);
-      setFiles([]);
-      setTimeout(() => setSubmitted(false), 5000);
-    },
-  });
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
@@ -79,19 +71,34 @@ export default function VelvetContact() {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const addReferenceFiles = useCallback((incoming: File[]) => {
+    if (incoming.length === 0) return;
+
+    const nextFiles = [...files, ...incoming];
+    const validationError = getReferenceImageValidationError(nextFiles);
+
+    if (validationError) {
+      setFileError(validationError);
+      return;
+    }
+
+    setFileError(null);
+    setFiles(nextFiles);
+  }, [files]);
+
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const dropped = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-    setFiles((prev) => [...prev, ...dropped].slice(0, 5));
-  }, []);
+    addReferenceFiles(Array.from(e.dataTransfer.files));
+  }, [addReferenceFiles]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
-    setFiles((prev) => [...prev, ...selected].slice(0, 5));
+    addReferenceFiles(Array.from(e.currentTarget.files || []));
+    e.currentTarget.value = '';
   };
 
   const removeFile = (index: number) => {
+    setFileError(null);
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -100,30 +107,47 @@ export default function VelvetContact() {
     setSubmitted(false);
     setFormError(null);
 
+    const validationError = getReferenceImageValidationError(files);
+    if (validationError) {
+      setFileError(validationError);
+      return;
+    }
+
+    setFileError(null);
+
     if (dateSelections.length === 0) {
       setFormError('Please choose at least one preferred date and time.');
       return;
     }
 
-    setUploading(true);
+    setIsSubmitting(true);
     try {
       const uploaded = await uploadReferenceImages(files);
-      const preferredDates = dateSelections.map((d) => `${d.date} ${d.time}`).join('; ');
-      await createBooking.mutateAsync({
+      await submitBookingInquiry({
         name: formData.name,
         email: formData.email,
-        phone: formData.phone || undefined,
-        description: formData.description,
-        size: formData.size || undefined,
-        placement: formData.placement || undefined,
-        preferredDates: preferredDates || undefined,
-        referenceImages: uploaded.length > 0 ? JSON.stringify(uploaded) : undefined,
+        phone: formData.phone,
+        tattooIdea: formData.description,
+        placement: formData.placement,
+        sizeEstimate: formData.size,
+        preferredDate: dateSelections.map((d) => d.date).join('; '),
+        preferredTime: dateSelections.map((d) => d.time).join('; '),
+        budget: formData.budget,
+        referenceLinks: uploaded,
+        message: formData.message,
       });
+      setSubmitted(true);
+      setFormError(null);
+      setFileError(null);
+      setFormData({ name: '', email: '', phone: '', description: '', size: '', placement: '', budget: '', message: '' });
+      setDateSelections([]);
+      setFiles([]);
+      setTimeout(() => setSubmitted(false), 5000);
     } catch (error) {
       setSubmitted(false);
       setFormError(error instanceof Error ? error.message : 'Your booking request could not be sent. Please try again.');
     } finally {
-      setUploading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -253,7 +277,7 @@ export default function VelvetContact() {
           </div>
 
           {/* Size + Placement Row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
             <div>
               <label htmlFor="velvet-booking-size" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
                 Approximate Size
@@ -294,6 +318,26 @@ export default function VelvetContact() {
                 }}
               />
             </div>
+            <div>
+              <label htmlFor="velvet-booking-budget" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
+                Budget
+              </label>
+              <input
+                id="velvet-booking-budget"
+                type="text"
+                name="budget"
+                value={formData.budget}
+                onChange={handleChange}
+                placeholder="e.g., $150-$300"
+                className="w-full px-0 py-3 font-sans text-base bg-transparent border-b outline-none transition-colors duration-300 focus:border-[#D14A6E]"
+                style={{
+                  color: '#E8DDD4',
+                  borderColor: '#1A1A1A',
+                  borderBottomWidth: 1,
+                  borderBottomStyle: 'solid',
+                }}
+              />
+            </div>
           </div>
 
           {/* Date & Time Calendar Picker */}
@@ -304,6 +348,27 @@ export default function VelvetContact() {
             <DateTimePicker
               selections={dateSelections}
               onChange={setDateSelections}
+            />
+          </div>
+
+          <div className="mb-10">
+            <label htmlFor="velvet-booking-message" className="font-sans text-xs uppercase tracking-[0.15em] block mb-2" style={{ color: '#E8DDD4', opacity: 0.75 }}>
+              Anything else I should know?
+            </label>
+            <textarea
+              id="velvet-booking-message"
+              name="message"
+              value={formData.message}
+              onChange={handleChange}
+              rows={3}
+              placeholder="Timing notes, accessibility needs, questions, or extra context..."
+              className="w-full px-0 py-3 font-sans text-base bg-transparent border-b outline-none transition-colors duration-300 focus:border-[#D14A6E] resize-none"
+              style={{
+                color: '#E8DDD4',
+                borderColor: '#1A1A1A',
+                borderBottomWidth: 1,
+                borderBottomStyle: 'solid',
+              }}
             />
           </div>
 
@@ -335,18 +400,23 @@ export default function VelvetContact() {
             >
               <Upload size={24} style={{ color: '#D14A6E', opacity: 0.6 }} />
               <p className="font-sans text-sm mt-3" style={{ color: '#E8DDD4', opacity: 0.5 }}>
-                Drag & drop images here or click to browse
+                JPG, PNG, or WebP. Up to 5 files, 5 MB each.
               </p>
               <input
                 id="file-input"
                 type="file"
-                accept="image/*"
+                accept={REFERENCE_IMAGE_ACCEPT}
                 multiple
                 onChange={handleFileSelect}
                 aria-label="Upload tattoo reference photos"
                 className="hidden"
               />
             </div>
+            {fileError && (
+              <p role="alert" className="font-sans text-sm mt-3" style={{ color: '#F4A5AE' }}>
+                {fileError}
+              </p>
+            )}
 
             {/* File previews */}
             {files.length > 0 && (
@@ -381,7 +451,7 @@ export default function VelvetContact() {
           <div className="flex flex-col items-center gap-4">
             <button
               type="submit"
-              disabled={createBooking.isPending || uploading}
+              disabled={isSubmitting}
               className="font-sans text-xs uppercase tracking-[0.2em] px-12 py-4 border transition-all duration-300 hover:bg-[#D14A6E] hover:text-[#0A0A0A] hover:border-[#D14A6E] disabled:opacity-50"
               style={{
                 color: '#D14A6E',
@@ -390,7 +460,7 @@ export default function VelvetContact() {
               }}
               data-cursor-hover
             >
-              {createBooking.isPending || uploading ? 'Sending...' : submitted ? 'Sent! We will be in touch.' : 'Submit Request'}
+              {isSubmitting ? 'Sending...' : submitted ? 'Sent! We will be in touch.' : 'Submit Request'}
             </button>
 
             {submitted && (
