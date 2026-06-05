@@ -16,6 +16,7 @@ const FEATURES = [
     heading: 'Art that stays with you',
     scriptLine: 'every mark has a meaning',
     body: 'Every tattoo tells a story. At Velvet Ink, we craft permanent art that resonates with who you are — floral designs, script work, and custom pieces that blur the line between body and canvas.',
+    ctaLabel: 'Explore Velvet Ink',
     link: '/velvet-ink',
     imagePosition: 'left',
   },
@@ -28,6 +29,7 @@ const FEATURES = [
     heading: 'Words that linger',
     scriptLine: 'stories worth getting lost in',
     body: 'From fiction that pulls you into other worlds to poetry that finds the raw nerve, The Gaston Collective publishes work that refuses to be forgotten. Stories, essays, and the occasional manifesto.',
+    ctaLabel: 'Explore The Written Word',
     link: '/written-word',
     imagePosition: 'right',
   },
@@ -139,7 +141,7 @@ export default function FeaturedShowcase() {
                 style={{ color: f.accent, borderColor: `${f.accent}40`, backgroundColor: 'transparent', cursor: 'pointer' }}
                 data-cursor-hover
               >
-                <span>Explore {f.title.split(' ')[0]}</span>
+                <span>{f.ctaLabel}</span>
               </button>
             </div>
           </div>
