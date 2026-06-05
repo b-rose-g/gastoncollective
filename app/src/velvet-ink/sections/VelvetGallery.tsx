@@ -6,10 +6,34 @@ import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
 
-const TATTOO_IMAGES = [
+type GalleryImage = {
+  src: string;
+  title: string;
+  category: 'tattoo' | 'piercing';
+  width: number;
+  height: number;
+  previewCrop?: {
+    aspectRatio: string;
+    scale: number;
+    origin: string;
+  };
+};
+
+const TATTOO_IMAGES: GalleryImage[] = [
   { src: '/images/tattoo_1.jpg', title: 'Piece #1', category: 'tattoo', width: 556, height: 660 },
   { src: '/images/tattoo_2.jpg', title: 'Piece #2', category: 'tattoo', width: 780, height: 1210 },
-  { src: '/images/tattoo_3.jpg', title: 'Piece #3', category: 'tattoo', width: 1080, height: 1440 },
+  {
+    src: '/images/tattoo_3.jpg',
+    title: 'Piece #3',
+    category: 'tattoo',
+    width: 1080,
+    height: 1440,
+    previewCrop: {
+      aspectRatio: '3 / 4',
+      scale: 1.42,
+      origin: '59% 61%',
+    },
+  },
   { src: '/images/tattoo_4.jpg', title: 'Piece #4', category: 'tattoo', width: 957, height: 1643 },
   { src: '/images/tattoo_5.jpg', title: 'Piece #5', category: 'tattoo', width: 529, height: 1197 },
   { src: '/images/tattoo_6.jpg', title: 'Piece #6', category: 'tattoo', width: 670, height: 1126 },
@@ -19,7 +43,7 @@ const TATTOO_IMAGES = [
   { src: '/images/tattoo_10.jpg', title: 'Piece #10', category: 'tattoo', width: 659, height: 623 },
 ];
 
-const PIERCING_IMAGES = [
+const PIERCING_IMAGES: GalleryImage[] = [
   { src: '/images/piercing_1.jpg', title: 'Piece #11', category: 'piercing', width: 1206, height: 2208 },
   { src: '/images/piercing_2.jpg', title: 'Piece #12', category: 'piercing', width: 1242, height: 2208 },
 ];
@@ -146,6 +170,7 @@ export default function VelvetGallery() {
             <div
               key={`${filter}-${i}`}
               className="gallery-item relative overflow-hidden group cursor-pointer mb-3 opacity-0 break-inside-avoid"
+              style={img.previewCrop ? { aspectRatio: img.previewCrop.aspectRatio } : undefined}
               onClick={() => setLightbox(ALL_IMAGES.indexOf(img))}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -164,8 +189,16 @@ export default function VelvetGallery() {
                 width={img.width}
                 height={img.height}
                 decoding="async"
-                className="w-full object-cover transition-all duration-700 group-hover:scale-105"
-                style={{ filter: 'brightness(0.85)' }}
+                className={`${img.previewCrop ? 'h-full' : ''} w-full object-cover transition-all duration-700 ${img.previewCrop ? '' : 'group-hover:scale-105'}`}
+                style={{
+                  filter: 'brightness(0.85)',
+                  ...(img.previewCrop
+                    ? {
+                        transform: `scale(${img.previewCrop.scale})`,
+                        transformOrigin: img.previewCrop.origin,
+                      }
+                    : {}),
+                }}
                 loading="lazy"
               />
 

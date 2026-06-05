@@ -140,43 +140,55 @@ export default function VelvetHero() {
         </div>
       </div>
 
-      {/* Decorative rose SVG */}
+      {/* Decorative tattoo machine SVG */}
       <svg
-        className="absolute bottom-0 right-0 pointer-events-none opacity-[0.06]"
-        style={{ width: 'clamp(200px, 30vw, 400px)', height: 'auto' }}
-        viewBox="0 0 100 100"
+        className="absolute bottom-0 right-0 pointer-events-none opacity-[0.16]"
+        style={{ width: 'clamp(220px, 32vw, 420px)', height: 'auto' }}
+        viewBox="-4 0 138 132"
         fill="none"
+        aria-hidden="true"
       >
         <path
-          d="M50 95 C50 95 20 80 20 50 C20 30 35 15 50 10 C65 15 80 30 80 50 C80 80 50 95 50 95Z"
+          d="M31 55 87 23c7-4 15-1 18 6l3 7c3 7 0 14-7 18L45 86c-7 4-15 1-18-6l-3-7c-3-7 0-14 7-18Z"
           stroke="#D14A6E"
-          strokeWidth="0.5"
-          fill="none"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
         <path
-          d="M50 80 C50 80 35 70 35 50 C35 38 42 28 50 24 C58 28 65 38 65 50 C65 70 50 80 50 80Z"
+          d="M28 78 98 38"
           stroke="#D14A6E"
-          strokeWidth="0.5"
-          fill="none"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
         <path
-          d="M50 10 Q55 5 60 15 Q55 20 50 10"
+          d="M97 24 110 17 119 33"
           stroke="#D14A6E"
-          strokeWidth="0.5"
-          fill="#D14A6E"
-          opacity="0.3"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
         <path
-          d="M30 40 Q20 35 25 50"
+          d="M66 75 82 66 110 113c2 4 1 8-3 10l-11 6c-4 2-8 1-10-3L66 75Z"
           stroke="#D14A6E"
-          strokeWidth="0.5"
-          fill="none"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
         <path
-          d="M70 40 Q80 35 75 50"
+          d="M85 78l15-8M92 91l15-8M100 104l12-7"
           stroke="#D14A6E"
-          strokeWidth="0.5"
-          fill="none"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M27 80 17 86c-5 3-11 1-14-4M18 86 6 93M50 83c-10 8-15 18-14 31M64 78c8 23 23 36 44 38 8 1 15-2 20-9"
+          stroke="#D14A6E"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
       </svg>
     </section>
