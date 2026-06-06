@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { publicSupabase } from "./supabase";
 
 export type UploadedReference = {
   name: string;
@@ -59,7 +59,7 @@ export async function uploadReferenceImages(files: File[]): Promise<UploadedRefe
 
   for (const file of files) {
     const path = uniqueStoragePath(file);
-    const { data, error } = await supabase.storage.from(storageBucket).upload(path, file, {
+    const { data, error } = await publicSupabase.storage.from(storageBucket).upload(path, file, {
       cacheControl: "31536000",
       contentType: file.type,
       upsert: false,
@@ -73,7 +73,7 @@ export async function uploadReferenceImages(files: File[]): Promise<UploadedRefe
       throw new Error("Reference images could not be uploaded. Please try again.");
     }
 
-    const { data: publicUrlData } = supabase.storage.from(storageBucket).getPublicUrl(data.path);
+    const { data: publicUrlData } = publicSupabase.storage.from(storageBucket).getPublicUrl(data.path);
     uploaded.push({
       name: file.name,
       url: publicUrlData.publicUrl,

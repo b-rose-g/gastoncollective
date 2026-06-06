@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { publicSupabase } from "./supabase";
 import type { UploadedReference } from "./uploads";
 
 type BookingInquiryInput = {
@@ -52,7 +52,7 @@ export async function submitBookingInquiry(input: BookingInquiryInput) {
     status: "pending",
   };
 
-  const { error } = await supabase.from("booking_inquiries").insert(payload);
+  const { error } = await publicSupabase.from("booking_inquiries").insert(payload);
 
   if (error) {
     console.error("Supabase booking_inquiries insert failed", {
@@ -80,7 +80,7 @@ export async function submitCommissionInquiry(input: CommissionInquiryInput) {
     status: "pending",
   };
 
-  const { error } = await supabase.from("commission_inquiries").insert(payload);
+  const { error } = await publicSupabase.from("commission_inquiries").insert(payload);
 
   if (error) {
     console.error("Supabase commission_inquiries insert failed", {

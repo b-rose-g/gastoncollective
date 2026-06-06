@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { publicSupabase } from "./supabase";
 
 type ContactMessageInput = {
   name: string;
@@ -20,7 +20,7 @@ export async function submitContactMessage(input: ContactMessageInput) {
     status: "unread",
   };
 
-  const { error } = await supabase.from("contact_messages").insert(payload);
+  const { error } = await publicSupabase.from("contact_messages").insert(payload);
 
   if (error) {
     console.error("Supabase contact_messages insert failed", {
