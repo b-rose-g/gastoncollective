@@ -1,13 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Session, User } from '@supabase/supabase-js';
 import {
   AlertCircle,
+  Calendar,
   CheckCircle2,
+  Clock,
+  ExternalLink,
+  Inbox,
   Loader2,
   LogIn,
   LogOut,
+  Mail,
+  MessageSquareText,
+  Palette,
+  Phone,
+  RefreshCw,
   ShieldCheck,
   UserRound,
 } from 'lucide-react';
@@ -25,7 +34,79 @@ type AdminProfile = {
   [key: string]: unknown;
 };
 
+type ContactMessage = {
+  id: number | string;
+  name: string | null;
+  email: string | null;
+  phone?: string | null;
+  subject?: string | null;
+  message: string | null;
+  status: string | null;
+  created_at: string | null;
+};
+
+type BookingInquiry = {
+  id: number | string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  tattoo_idea: string | null;
+  placement: string | null;
+  size_estimate: string | null;
+  preferred_date: string | null;
+  preferred_time: string | null;
+  budget: string | null;
+  reference_links: string | null;
+  message: string | null;
+  status: string | null;
+  created_at: string | null;
+};
+
+type CommissionInquiry = {
+  id: number | string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  commission_type: string | null;
+  description: string | null;
+  size_request: string | null;
+  budget: string | null;
+  deadline: string | null;
+  reference_links: string | null;
+  status: string | null;
+  created_at: string | null;
+};
+
+type DashboardData = {
+  messages: ContactMessage[];
+  bookings: BookingInquiry[];
+  commissions: CommissionInquiry[];
+};
+
+type DashboardErrors = Partial<Record<keyof DashboardData, string>>;
+type AdminTab = 'overview' | 'messages' | 'bookings' | 'commissions';
 type ProfileStatus = 'idle' | 'loading' | 'authorized' | 'unauthorized' | 'error';
+
+type ReferenceLink = {
+  name: string;
+  url: string;
+  type?: string;
+};
+
+type RecentSubmission = {
+  id: string;
+  type: 'Message' | 'Tattoo Booking' | 'Commission';
+  title: string;
+  detail: string;
+  status: string | null;
+  createdAt: string | null;
+};
+
+const emptyDashboardData: DashboardData = {
+  messages: [],
+  bookings: [],
+  commissions: [],
+};
 
 function profileTextValue(profile: AdminProfile | null, keys: Array<keyof AdminProfile>) {
   for (const key of keys) {
@@ -51,6 +132,101 @@ function userEmail(user: User | undefined, profile: AdminProfile | null) {
 
 function roleLabel(profile: AdminProfile | null) {
   return profileTextValue(profile, ['role']) || 'admin';
+}
+
+function displayValue(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return '-';
+  const text = String(value).trim();
+  return text || '-';
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function toTimestamp(value: string | null | undefined) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function normalizeStatus(status: string | null | undefined) {
+  return status?.trim().toLowerCase() || '';
+}
+
+function isNewMessage(message: ContactMessage) {
+  return ['new', 'unread'].includes(normalizeStatus(message.status));
+}
+
+function isPending(status: string | null | undefined) {
+  return normalizeStatus(status) === 'pending';
+}
+
+function phoneHref(phone: string | null | undefined) {
+  const cleaned = phone?.replace(/[^\d+]/g, '') ?? '';
+  return cleaned ? `tel:${cleaned}` : '';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function referenceFromUnknown(value: unknown, index: number): ReferenceLink | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return { name: `Reference ${index + 1}`, url: trimmed };
+  }
+
+  if (!isRecord(value)) return null;
+
+  const rawUrl = value.url ?? value.href ?? value.publicUrl;
+  const rawName = value.name ?? value.fileName ?? value.filename;
+  const rawType = value.type ?? value.contentType;
+  const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  if (!url) return null;
+
+  return {
+    name: typeof rawName === 'string' && rawName.trim() ? rawName.trim() : `Reference ${index + 1}`,
+    url,
+    type: typeof rawType === 'string' ? rawType : undefined,
+  };
+}
+
+function parseReferenceLinks(value: string | null | undefined): ReferenceLink[] {
+  if (!value?.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item, index) => referenceFromUnknown(item, index))
+        .filter((item): item is ReferenceLink => Boolean(item));
+    }
+
+    const single = referenceFromUnknown(parsed, 0);
+    return single ? [single] : [];
+  } catch {
+    return value
+      .split(',')
+      .map((item, index) => referenceFromUnknown(item, index))
+      .filter((item): item is ReferenceLink => Boolean(item));
+  }
+}
+
+function isImageReference(reference: ReferenceLink) {
+  const type = reference.type?.toLowerCase() ?? '';
+  const url = reference.url.toLowerCase();
+  return type.startsWith('image/') || /\.(jpe?g|png|webp|gif)(\?|#|$)/i.test(url);
 }
 
 function AuthFrame({ children }: { children: ReactNode }) {
@@ -112,6 +288,148 @@ function LoadingState({ label }: { label: string }) {
   );
 }
 
+function InlineLoading({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 py-8 font-sans text-sm" style={{ color: '#E8DDD4', opacity: 0.72 }}>
+      <Loader2 className="animate-spin" size={18} style={{ color: '#F4A5AE' }} />
+      {label}
+    </div>
+  );
+}
+
+function ErrorPanel({ message }: { message: string }) {
+  return (
+    <div style={{ border: '1px solid #D14A6E55', borderRadius: 8, padding: 18, backgroundColor: 'rgba(209, 74, 110, 0.06)' }}>
+      <StatusMessage tone="error">{message}</StatusMessage>
+    </div>
+  );
+}
+
+function EmptyState({ children }: { children: ReactNode }) {
+  return (
+    <div className="text-center py-14" style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414' }}>
+      <Inbox size={34} style={{ color: '#E8DDD4', opacity: 0.24, margin: '0 auto' }} />
+      <p className="font-sans text-sm mt-4" style={{ color: '#E8DDD4', opacity: 0.58 }}>
+        {children}
+      </p>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string | null | undefined }) {
+  const normalized = normalizeStatus(status);
+  const color =
+    normalized === 'unread' || normalized === 'new' || normalized === 'pending'
+      ? '#D14A6E'
+      : normalized === 'completed' || normalized === 'confirmed' || normalized === 'read'
+        ? '#6B8F71'
+        : '#C4A265';
+
+  return (
+    <span
+      className="inline-flex items-center font-sans text-xs uppercase px-2.5 py-1"
+      style={{ color, border: `1px solid ${color}`, borderRadius: 4, letterSpacing: '0.08em' }}
+    >
+      {displayValue(status).replace('_', ' ')}
+    </span>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="font-sans text-xs uppercase mb-1" style={{ color: '#E8DDD4', opacity: 0.52, letterSpacing: '0.1em' }}>
+        {label}
+      </p>
+      <div className="font-sans text-sm break-words whitespace-pre-wrap" style={{ color: '#E8DDD4', lineHeight: 1.55 }}>
+        {children || '-'}
+      </div>
+    </div>
+  );
+}
+
+function ContactLinks({ email, phone }: { email: string | null | undefined; phone?: string | null }) {
+  const cleanEmail = email?.trim();
+  const cleanPhone = phone?.trim();
+  const tel = phoneHref(cleanPhone);
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {cleanEmail && (
+        <a
+          href={`mailto:${cleanEmail}`}
+          className="inline-flex items-center gap-1.5 font-sans text-xs"
+          style={{ color: '#F4A5AE', textDecoration: 'none' }}
+        >
+          <Mail size={13} />
+          {cleanEmail}
+        </a>
+      )}
+      {cleanPhone && tel && (
+        <a
+          href={tel}
+          className="inline-flex items-center gap-1.5 font-sans text-xs"
+          style={{ color: '#C4A265', textDecoration: 'none' }}
+        >
+          <Phone size={13} />
+          {cleanPhone}
+        </a>
+      )}
+    </div>
+  );
+}
+
+function ReferenceLinks({ value }: { value: string | null | undefined }) {
+  const references = parseReferenceLinks(value);
+
+  if (references.length === 0) {
+    return (
+      <p className="font-sans text-sm" style={{ color: '#E8DDD4', opacity: 0.58 }}>
+        No reference links.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-3">
+      {references.map((reference, index) => (
+        <a
+          key={`${reference.url}-${index}`}
+          href={reference.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group"
+          style={{ color: '#E8DDD4', textDecoration: 'none' }}
+        >
+          {isImageReference(reference) ? (
+            <span className="block" style={{ width: 92 }}>
+              <img
+                src={reference.url}
+                alt={reference.name}
+                loading="lazy"
+                className="object-cover"
+                style={{ width: 92, height: 92, border: '1px solid #2A2A2A', borderRadius: 6, backgroundColor: '#0A0A0A' }}
+              />
+              <span className="font-sans text-xs mt-2 flex items-center gap-1 break-words" style={{ color: '#F4A5AE' }}>
+                {reference.name}
+                <ExternalLink size={11} />
+              </span>
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center gap-2 font-sans text-xs px-3 py-2"
+              style={{ border: '1px solid #2A2A2A', borderRadius: 6, color: '#F4A5AE' }}
+            >
+              {reference.name}
+              <ExternalLink size={12} />
+            </span>
+          )}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function AdminLoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -144,7 +462,7 @@ function AdminLoginForm() {
     <AuthFrame>
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <div>
-          <label htmlFor="admin-email" className="font-sans text-xs uppercase tracking-[0.16em]" style={{ color: '#E8DDD4', opacity: 0.75 }}>
+          <label htmlFor="admin-email" className="font-sans text-xs uppercase" style={{ color: '#E8DDD4', opacity: 0.75, letterSpacing: '0.12em' }}>
             Email
           </label>
           <input
@@ -160,7 +478,7 @@ function AdminLoginForm() {
         </div>
 
         <div>
-          <label htmlFor="admin-password" className="font-sans text-xs uppercase tracking-[0.16em]" style={{ color: '#E8DDD4', opacity: 0.75 }}>
+          <label htmlFor="admin-password" className="font-sans text-xs uppercase" style={{ color: '#E8DDD4', opacity: 0.75, letterSpacing: '0.12em' }}>
             Password
           </label>
           <input
@@ -181,13 +499,14 @@ function AdminLoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className="font-sans text-xs uppercase tracking-[0.16em] px-6 py-3 flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-60"
+          className="font-sans text-xs uppercase px-6 py-3 flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-60"
           style={{
             color: '#0A0A0A',
             backgroundColor: '#F4A5AE',
             border: '1px solid #F4A5AE',
             borderRadius: 6,
             cursor: loading ? 'wait' : 'pointer',
+            letterSpacing: '0.12em',
           }}
         >
           {loading ? <Loader2 className="animate-spin" size={15} /> : <LogIn size={15} />}
@@ -196,7 +515,7 @@ function AdminLoginForm() {
       </form>
 
       <div className="text-center mt-7">
-        <Link className="font-sans text-xs uppercase tracking-[0.15em]" to="/" style={{ color: '#E8DDD4', opacity: 0.65 }}>
+        <Link className="font-sans text-xs uppercase" to="/" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.12em' }}>
           Back to site
         </Link>
       </div>
@@ -239,13 +558,14 @@ function UnauthorizedState({
           type="button"
           onClick={onLogout}
           disabled={logoutLoading}
-          className="font-sans text-xs uppercase tracking-[0.16em] px-6 py-3 flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-60"
+          className="font-sans text-xs uppercase px-6 py-3 flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-60"
           style={{
             color: '#E8DDD4',
             backgroundColor: 'transparent',
             border: '1px solid #D14A6E',
             borderRadius: 6,
             cursor: logoutLoading ? 'wait' : 'pointer',
+            letterSpacing: '0.12em',
           }}
         >
           {logoutLoading ? <Loader2 className="animate-spin" size={15} /> : <LogOut size={15} />}
@@ -253,6 +573,257 @@ function UnauthorizedState({
         </button>
       </div>
     </AuthFrame>
+  );
+}
+
+function OverviewSection({ data, loading, errors }: { data: DashboardData; loading: boolean; errors: DashboardErrors }) {
+  const recentSubmissions = useMemo<RecentSubmission[]>(() => {
+    const messages = data.messages.map((message) => ({
+      id: `message-${message.id}`,
+      type: 'Message' as const,
+      title: displayValue(message.name),
+      detail: displayValue(message.subject || message.message),
+      status: message.status,
+      createdAt: message.created_at,
+    }));
+
+    const bookings = data.bookings.map((booking) => ({
+      id: `booking-${booking.id}`,
+      type: 'Tattoo Booking' as const,
+      title: displayValue(booking.name),
+      detail: displayValue(booking.tattoo_idea),
+      status: booking.status,
+      createdAt: booking.created_at,
+    }));
+
+    const commissions = data.commissions.map((commission) => ({
+      id: `commission-${commission.id}`,
+      type: 'Commission' as const,
+      title: displayValue(commission.name),
+      detail: displayValue(commission.commission_type || commission.description),
+      status: commission.status,
+      createdAt: commission.created_at,
+    }));
+
+    return [...messages, ...bookings, ...commissions]
+      .sort((left, right) => toTimestamp(right.createdAt) - toTimestamp(left.createdAt))
+      .slice(0, 5);
+  }, [data]);
+
+  const summaryCards = [
+    {
+      label: 'New messages',
+      value: data.messages.filter(isNewMessage).length,
+      icon: <Mail size={20} />,
+      color: '#F4A5AE',
+    },
+    {
+      label: 'Pending tattoo bookings',
+      value: data.bookings.filter((booking) => isPending(booking.status)).length,
+      icon: <Calendar size={20} />,
+      color: '#C4A265',
+    },
+    {
+      label: 'Pending commissions',
+      value: data.commissions.filter((commission) => isPending(commission.status)).length,
+      icon: <Palette size={20} />,
+      color: '#6B8F71',
+    },
+  ];
+
+  if (loading) return <InlineLoading label="Loading dashboard overview" />;
+
+  return (
+    <div className="flex flex-col gap-8">
+      {Object.keys(errors).length > 0 && (
+        <ErrorPanel message="Some dashboard data could not be loaded. Check the section tabs for details, then try Refresh." />
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {summaryCards.map((card) => (
+          <article key={card.label} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-sans text-xs uppercase" style={{ color: '#E8DDD4', opacity: 0.58, letterSpacing: '0.1em' }}>
+                  {card.label}
+                </p>
+                <p className="font-serif mt-3" style={{ color: '#E8DDD4', fontSize: 32, lineHeight: 1 }}>
+                  {card.value}
+                </p>
+              </div>
+              <div className="flex items-center justify-center" style={{ width: 40, height: 40, borderRadius: 6, color: card.color, backgroundColor: `${card.color}18` }}>
+                {card.icon}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Clock size={18} style={{ color: '#F4A5AE' }} />
+          <h2 className="font-serif text-xl" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+            Recent Submissions
+          </h2>
+        </div>
+
+        {recentSubmissions.length === 0 ? (
+          <EmptyState>No submissions yet.</EmptyState>
+        ) : (
+          <div className="space-y-3">
+            {recentSubmissions.map((submission) => (
+              <article
+                key={submission.id}
+                className="flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 18 }}
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="font-sans text-xs uppercase" style={{ color: '#F4A5AE', letterSpacing: '0.1em' }}>
+                      {submission.type}
+                    </span>
+                    <StatusBadge status={submission.status} />
+                  </div>
+                  <p className="font-serif text-base" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+                    {submission.title}
+                  </p>
+                  <p className="font-sans text-sm mt-1 break-words" style={{ color: '#E8DDD4', opacity: 0.68 }}>
+                    {submission.detail}
+                  </p>
+                </div>
+                <p className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.55, whiteSpace: 'nowrap' }}>
+                  {formatDate(submission.createdAt)}
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function MessagesSection({ messages, loading, error }: { messages: ContactMessage[]; loading: boolean; error?: string }) {
+  if (loading) return <InlineLoading label="Loading contact messages" />;
+  if (error) return <ErrorPanel message={error} />;
+  if (messages.length === 0) return <EmptyState>No messages yet.</EmptyState>;
+
+  return (
+    <div className="space-y-4">
+      {messages.map((message) => (
+        <article key={message.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3 mb-2">
+                <h2 className="font-serif text-lg" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+                  {displayValue(message.name)}
+                </h2>
+                <StatusBadge status={message.status} />
+              </div>
+              <ContactLinks email={message.email} phone={message.phone} />
+            </div>
+            <p className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.55, whiteSpace: 'nowrap' }}>
+              {formatDate(message.created_at)}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {message.subject && <Field label="Subject">{message.subject}</Field>}
+            <Field label="Message">{displayValue(message.message)}</Field>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function BookingSection({ bookings, loading, error }: { bookings: BookingInquiry[]; loading: boolean; error?: string }) {
+  if (loading) return <InlineLoading label="Loading tattoo booking inquiries" />;
+  if (error) return <ErrorPanel message={error} />;
+  if (bookings.length === 0) return <EmptyState>No tattoo booking inquiries yet.</EmptyState>;
+
+  return (
+    <div className="space-y-4">
+      {bookings.map((booking) => (
+        <article key={booking.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3 mb-2">
+                <h2 className="font-serif text-lg" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+                  {displayValue(booking.name)}
+                </h2>
+                <StatusBadge status={booking.status} />
+              </div>
+              <ContactLinks email={booking.email} phone={booking.phone} />
+            </div>
+            <p className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.55, whiteSpace: 'nowrap' }}>
+              {formatDate(booking.created_at)}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <Field label="Tattoo idea">{displayValue(booking.tattoo_idea)}</Field>
+            <Field label="Placement">{displayValue(booking.placement)}</Field>
+            <Field label="Size estimate">{displayValue(booking.size_estimate)}</Field>
+            <Field label="Preferred date">{displayValue(booking.preferred_date)}</Field>
+            <Field label="Preferred time">{displayValue(booking.preferred_time)}</Field>
+            <Field label="Budget">{displayValue(booking.budget)}</Field>
+            <Field label="Message">{displayValue(booking.message)}</Field>
+            <Field label="Reference links">
+              <ReferenceLinks value={booking.reference_links} />
+            </Field>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function CommissionsSection({
+  commissions,
+  loading,
+  error,
+}: {
+  commissions: CommissionInquiry[];
+  loading: boolean;
+  error?: string;
+}) {
+  if (loading) return <InlineLoading label="Loading commission requests" />;
+  if (error) return <ErrorPanel message={error} />;
+  if (commissions.length === 0) return <EmptyState>No commission requests yet.</EmptyState>;
+
+  return (
+    <div className="space-y-4">
+      {commissions.map((commission) => (
+        <article key={commission.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3 mb-2">
+                <h2 className="font-serif text-lg" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+                  {displayValue(commission.name)}
+                </h2>
+                <StatusBadge status={commission.status} />
+              </div>
+              <ContactLinks email={commission.email} phone={commission.phone} />
+            </div>
+            <p className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.55, whiteSpace: 'nowrap' }}>
+              {formatDate(commission.created_at)}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <Field label="Commission type">{displayValue(commission.commission_type)}</Field>
+            <Field label="Description">{displayValue(commission.description)}</Field>
+            <Field label="Size request">{displayValue(commission.size_request)}</Field>
+            <Field label="Budget">{displayValue(commission.budget)}</Field>
+            <Field label="Deadline">{displayValue(commission.deadline)}</Field>
+            <Field label="Reference links">
+              <ReferenceLinks value={commission.reference_links} />
+            </Field>
+          </div>
+        </article>
+      ))}
+    </div>
   );
 }
 
@@ -269,9 +840,82 @@ function AdminPortal({
   logoutLoading: boolean;
   logoutError: string;
 }) {
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [dashboardData, setDashboardData] = useState<DashboardData>(emptyDashboardData);
+  const [dashboardErrors, setDashboardErrors] = useState<DashboardErrors>({});
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
   const adminName = userDisplayName(session.user, profile);
   const adminEmail = userEmail(session.user, profile);
   const adminRole = roleLabel(profile);
+
+  const loadDashboardData = useCallback(async (refresh = false) => {
+    if (refresh) {
+      setRefreshing(true);
+      setRefreshNotice('');
+    } else {
+      setDashboardLoading(true);
+    }
+
+    const [messagesResult, bookingsResult, commissionsResult] = await Promise.all([
+      supabase.from('contact_messages').select('*').order('created_at', { ascending: false }),
+      supabase.from('booking_inquiries').select('*').order('created_at', { ascending: false }),
+      supabase.from('commission_inquiries').select('*').order('created_at', { ascending: false }),
+    ]);
+
+    const nextErrors: DashboardErrors = {};
+    if (messagesResult.error) nextErrors.messages = `Unable to load messages: ${messagesResult.error.message}`;
+    if (bookingsResult.error) nextErrors.bookings = `Unable to load tattoo bookings: ${bookingsResult.error.message}`;
+    if (commissionsResult.error) nextErrors.commissions = `Unable to load commission requests: ${commissionsResult.error.message}`;
+
+    setDashboardData((current) => ({
+      messages: messagesResult.error ? current.messages : ((messagesResult.data ?? []) as ContactMessage[]),
+      bookings: bookingsResult.error ? current.bookings : ((bookingsResult.data ?? []) as BookingInquiry[]),
+      commissions: commissionsResult.error ? current.commissions : ((commissionsResult.data ?? []) as CommissionInquiry[]),
+    }));
+    setDashboardErrors(nextErrors);
+    setDashboardLoading(false);
+    setRefreshing(false);
+
+    if (Object.keys(nextErrors).length === 0) {
+      setLastUpdated(new Date());
+      setRefreshNotice(refresh ? 'Dashboard refreshed.' : '');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDashboardData();
+  }, [loadDashboardData]);
+
+  const tabs = [
+    {
+      id: 'overview' as const,
+      label: 'Overview',
+      icon: <MessageSquareText size={16} />,
+      count: dataCount(dashboardData),
+    },
+    {
+      id: 'messages' as const,
+      label: 'Messages',
+      icon: <Mail size={16} />,
+      count: dashboardData.messages.length,
+    },
+    {
+      id: 'bookings' as const,
+      label: 'Tattoo Bookings',
+      icon: <Calendar size={16} />,
+      count: dashboardData.bookings.length,
+    },
+    {
+      id: 'commissions' as const,
+      label: 'Commission Requests',
+      icon: <Palette size={16} />,
+      count: dashboardData.commissions.length,
+    },
+  ];
 
   return (
     <main className="min-h-screen" style={{ backgroundColor: '#0A0A0A', color: '#E8DDD4' }}>
@@ -279,36 +923,41 @@ function AdminPortal({
         className="sticky top-0 z-50"
         style={{ backgroundColor: 'rgba(10, 10, 10, 0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #1A1A1A' }}
       >
-        <div className="max-w-[1120px] mx-auto px-6 md:px-10 flex items-center justify-between gap-4 min-h-16 py-3">
-          <Link to="/" className="font-serif text-lg transition-opacity duration-300 hover:opacity-70" style={{ color: '#F4A5AE' }}>
-            TGC
-          </Link>
-          <button
-            type="button"
-            onClick={onLogout}
-            disabled={logoutLoading}
-            className="font-sans text-xs uppercase tracking-[0.15em] flex items-center gap-2 transition-opacity duration-300 hover:opacity-100 disabled:opacity-50"
-            style={{ color: '#E8DDD4', opacity: 0.78, background: 'none', border: 'none', cursor: logoutLoading ? 'wait' : 'pointer' }}
-          >
-            {logoutLoading ? <Loader2 className="animate-spin" size={14} /> : <LogOut size={14} />}
-            Log out
-          </button>
+        <div className="max-w-[1180px] mx-auto px-5 md:px-8 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <Link to="/" className="font-serif text-lg transition-opacity duration-300 hover:opacity-70" style={{ color: '#F4A5AE' }}>
+              TGC
+            </Link>
+            <button
+              type="button"
+              onClick={onLogout}
+              disabled={logoutLoading}
+              className="font-sans text-xs uppercase flex items-center gap-2 transition-opacity duration-300 hover:opacity-100 disabled:opacity-50"
+              style={{ color: '#E8DDD4', opacity: 0.78, background: 'none', border: 'none', cursor: logoutLoading ? 'wait' : 'pointer', letterSpacing: '0.12em' }}
+            >
+              {logoutLoading ? <Loader2 className="animate-spin" size={14} /> : <LogOut size={14} />}
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
-      <section className="max-w-[1120px] mx-auto px-6 md:px-10 py-10">
+      <section className="max-w-[1180px] mx-auto px-5 md:px-8 py-8">
         <div className="flex flex-col gap-8">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
             <div>
-              <p className="font-sans text-xs uppercase tracking-[0.18em]" style={{ color: '#6B8F71' }}>
+              <p className="font-sans text-xs uppercase" style={{ color: '#6B8F71', letterSpacing: '0.14em' }}>
                 Access confirmed
               </p>
               <h1 className="font-serif mt-3" style={{ fontSize: 34, lineHeight: 1.15, fontWeight: 600 }}>
-                Admin Portal
+                Admin Dashboard
               </h1>
+              <p className="font-sans text-sm mt-3" style={{ color: '#E8DDD4', opacity: 0.64, lineHeight: 1.6 }}>
+                View incoming messages, tattoo booking inquiries, and commission requests.
+              </p>
             </div>
 
-            <div className="w-full md:max-w-sm" style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
+            <div className="w-full lg:max-w-md" style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 18 }}>
               <div className="flex items-start gap-3">
                 <div className="flex items-center justify-center" style={{ width: 38, height: 38, borderRadius: 6, backgroundColor: 'rgba(244, 165, 174, 0.12)', color: '#F4A5AE' }}>
                   <UserRound size={18} />
@@ -320,7 +969,7 @@ function AdminPortal({
                   <p className="font-sans text-sm mt-1 break-words" style={{ opacity: 0.68 }}>
                     {adminEmail}
                   </p>
-                  <p className="font-sans text-xs uppercase tracking-[0.16em] mt-3" style={{ color: '#F4A5AE' }}>
+                  <p className="font-sans text-xs uppercase mt-3" style={{ color: '#F4A5AE', letterSpacing: '0.12em' }}>
                     {adminRole}
                   </p>
                 </div>
@@ -330,41 +979,85 @@ function AdminPortal({
 
           {logoutError && <StatusMessage tone="error">{logoutError}</StatusMessage>}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
-              <ShieldCheck size={22} style={{ color: '#6B8F71' }} />
-              <h2 className="font-serif text-lg mt-4" style={{ fontWeight: 600 }}>
-                Secure Login
-              </h2>
-              <p className="font-sans text-sm mt-2" style={{ opacity: 0.68, lineHeight: 1.6 }}>
-                Supabase Auth email and password are active for this route.
-              </p>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{ borderBottom: '1px solid #1A1A1A' }}>
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className="font-sans text-xs uppercase px-4 py-3 flex items-center gap-2 whitespace-nowrap transition-all duration-300"
+                    style={{
+                      color: activeTab === tab.id ? '#F4A5AE' : '#E8DDD4',
+                      opacity: activeTab === tab.id ? 1 : 0.68,
+                      borderBottom: activeTab === tab.id ? '2px solid #F4A5AE' : '2px solid transparent',
+                      background: 'none',
+                      borderTop: 'none',
+                      borderLeft: 'none',
+                      borderRight: 'none',
+                      cursor: 'pointer',
+                      marginBottom: -1,
+                      letterSpacing: '0.1em',
+                    }}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                    <span style={{ color: '#E8DDD4', opacity: 0.62 }}>{tab.count}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {refreshNotice && <StatusMessage tone="success">{refreshNotice}</StatusMessage>}
+                {lastUpdated && (
+                  <p className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.52 }}>
+                    Updated {formatDate(lastUpdated.toISOString())}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void loadDashboardData(true)}
+                  disabled={dashboardLoading || refreshing}
+                  className="font-sans text-xs uppercase px-4 py-2.5 flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
+                  style={{
+                    color: '#E8DDD4',
+                    backgroundColor: 'transparent',
+                    border: '1px solid #2A2A2A',
+                    borderRadius: 6,
+                    cursor: dashboardLoading || refreshing ? 'wait' : 'pointer',
+                    letterSpacing: '0.1em',
+                  }}
+                >
+                  <RefreshCw className={refreshing ? 'animate-spin' : ''} size={14} />
+                  Refresh
+                </button>
+              </div>
             </div>
 
-            <div style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
-              <CheckCircle2 size={22} style={{ color: '#6B8F71' }} />
-              <h2 className="font-serif text-lg mt-4" style={{ fontWeight: 600 }}>
-                Admin Check
-              </h2>
-              <p className="font-sans text-sm mt-2" style={{ opacity: 0.68, lineHeight: 1.6 }}>
-                Your active profile in admin_profiles is verified through RLS.
-              </p>
-            </div>
-
-            <div style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
-              <UserRound size={22} style={{ color: '#F4A5AE' }} />
-              <h2 className="font-serif text-lg mt-4" style={{ fontWeight: 600 }}>
-                Phase 1
-              </h2>
-              <p className="font-sans text-sm mt-2" style={{ opacity: 0.68, lineHeight: 1.6 }}>
-                Access control is ready for the next admin tools.
-              </p>
+            <div>
+              {activeTab === 'overview' && (
+                <OverviewSection data={dashboardData} loading={dashboardLoading} errors={dashboardErrors} />
+              )}
+              {activeTab === 'messages' && (
+                <MessagesSection messages={dashboardData.messages} loading={dashboardLoading} error={dashboardErrors.messages} />
+              )}
+              {activeTab === 'bookings' && (
+                <BookingSection bookings={dashboardData.bookings} loading={dashboardLoading} error={dashboardErrors.bookings} />
+              )}
+              {activeTab === 'commissions' && (
+                <CommissionsSection commissions={dashboardData.commissions} loading={dashboardLoading} error={dashboardErrors.commissions} />
+              )}
             </div>
           </div>
         </div>
       </section>
     </main>
   );
+}
+
+function dataCount(data: DashboardData) {
+  return data.messages.length + data.bookings.length + data.commissions.length;
 }
 
 export default function AdminPage() {
@@ -483,13 +1176,14 @@ export default function AdminPage() {
             type="button"
             onClick={handleLogout}
             disabled={logoutLoading}
-            className="font-sans text-xs uppercase tracking-[0.16em] px-6 py-3 flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-60"
+            className="font-sans text-xs uppercase px-6 py-3 flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-60"
             style={{
               color: '#E8DDD4',
               backgroundColor: 'transparent',
               border: '1px solid #D14A6E',
               borderRadius: 6,
               cursor: logoutLoading ? 'wait' : 'pointer',
+              letterSpacing: '0.12em',
             }}
           >
             {logoutLoading ? <Loader2 className="animate-spin" size={15} /> : <LogOut size={15} />}
