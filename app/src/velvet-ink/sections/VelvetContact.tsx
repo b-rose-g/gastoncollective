@@ -15,6 +15,23 @@ interface TimeSelection {
   label: string;
 }
 
+function toDatabaseTime(value: string) {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return value.trim();
+
+  const [, rawHour, minutes, meridiem] = match;
+  let hour = Number(rawHour);
+
+  if (meridiem.toUpperCase() === 'PM' && hour < 12) hour += 12;
+  if (meridiem.toUpperCase() === 'AM' && hour === 12) hour = 0;
+
+  return `${String(hour).padStart(2, '0')}:${minutes}:00`;
+}
+
+function formatPreferredSelections(selections: TimeSelection[]) {
+  return selections.map((selection) => selection.label).join('\n');
+}
+
 export default function VelvetContact() {
   const sectionRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLDivElement>(null);
@@ -123,6 +140,13 @@ export default function VelvetContact() {
     setIsSubmitting(true);
     try {
       const uploaded = await uploadReferenceImages(files);
+      const [primarySelection] = dateSelections;
+      const preferredSelections = formatPreferredSelections(dateSelections);
+      const messageWithPreferredTimes = [
+        formData.message.trim(),
+        preferredSelections ? `Preferred dates and times:\n${preferredSelections}` : '',
+      ].filter(Boolean).join('\n\n');
+
       await submitBookingInquiry({
         name: formData.name,
         email: formData.email,
@@ -130,11 +154,11 @@ export default function VelvetContact() {
         tattooIdea: formData.description,
         placement: formData.placement,
         sizeEstimate: formData.size,
-        preferredDate: dateSelections.map((d) => d.date).join('; '),
-        preferredTime: dateSelections.map((d) => d.time).join('; '),
+        preferredDate: primarySelection.date,
+        preferredTime: toDatabaseTime(primarySelection.time),
         budget: formData.budget,
         referenceLinks: uploaded,
-        message: formData.message,
+        message: messageWithPreferredTimes,
       });
       setSubmitted(true);
       setFormError(null);
