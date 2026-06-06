@@ -30,8 +30,8 @@ const TATTOO_IMAGES: GalleryImage[] = [
     height: 1440,
     previewCrop: {
       aspectRatio: '3 / 4',
-      scale: 1.42,
-      origin: '59% 61%',
+      scale: 1.75,
+      origin: '58% 66%',
     },
   },
   { src: '/images/tattoo_4.jpg', title: 'Piece #4', category: 'tattoo', width: 957, height: 1643 },
