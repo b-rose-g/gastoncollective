@@ -5,8 +5,11 @@ import type { Session, User } from '@supabase/supabase-js';
 import {
   AlertCircle,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Clock,
+  Edit3,
   ExternalLink,
   Inbox,
   Loader2,
@@ -16,9 +19,11 @@ import {
   MessageSquareText,
   Palette,
   Phone,
+  Plus,
   RefreshCw,
   ShieldCheck,
   UserRound,
+  X,
 } from 'lucide-react';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
 import { supabase } from '@/lib/supabase';
@@ -80,6 +85,30 @@ type CommissionInquiry = {
   created_at: string | null;
 };
 
+type CalendarEvent = {
+  id: number | string;
+  event_type: string;
+  inquiry_type: string | null;
+  inquiry_id: number | string | null;
+  title: string;
+  description: string | null;
+  client_name: string | null;
+  client_email: string | null;
+  client_phone: string | null;
+  start_date: string;
+  start_time: string | null;
+  end_date: string | null;
+  end_time: string | null;
+  all_day: boolean | null;
+  location: string | null;
+  external_link: string | null;
+  status: string | null;
+  is_public: boolean | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 type DashboardData = {
   messages: ContactMessage[];
   bookings: BookingInquiry[];
@@ -87,9 +116,10 @@ type DashboardData = {
 };
 
 type DashboardErrors = Partial<Record<keyof DashboardData, string>>;
-type AdminTab = 'overview' | 'messages' | 'bookings' | 'commissions';
+type AdminTab = 'overview' | 'messages' | 'bookings' | 'commissions' | 'calendar';
 type SubmissionKind = keyof DashboardData;
 type FilterValue = 'all' | 'pending' | 'contacted' | 'approved' | 'archived';
+type CalendarVisibilityFilter = 'all' | 'public' | 'private';
 type ProfileStatus = 'idle' | 'loading' | 'authorized' | 'unauthorized' | 'error';
 
 type ReferenceLink = {
@@ -105,6 +135,30 @@ type RecentSubmission = {
   detail: string;
   status: string | null;
   createdAt: string | null;
+};
+
+type CalendarEventFormValues = {
+  event_type: string;
+  inquiry_type: string;
+  inquiry_id: string;
+  title: string;
+  description: string;
+  client_name: string;
+  client_email: string;
+  client_phone: string;
+  start_date: string;
+  start_time: string;
+  end_date: string;
+  end_time: string;
+  all_day: boolean;
+  location: string;
+  external_link: string;
+  status: string;
+  is_public: boolean;
+  notes: string;
+  updateInquiryStatus?: boolean;
+  sourceKind?: 'booking' | 'commission';
+  sourceId?: number | string;
 };
 
 const emptyDashboardData: DashboardData = {
@@ -137,6 +191,64 @@ const filterOptions = [
   { value: 'approved', label: 'Approved' },
   { value: 'archived', label: 'Archived' },
 ] satisfies { value: FilterValue; label: string }[];
+
+const calendarEventTypes = [
+  { value: 'tattoo_appointment', label: 'Tattoo Appointment' },
+  { value: 'commission_work', label: 'Commission Work' },
+  { value: 'book_signing', label: 'Book Signing' },
+  { value: 'poetry_night', label: 'Poetry Night' },
+  { value: 'popup_event', label: 'Pop-up Event' },
+  { value: 'shop_drop', label: 'Shop Drop' },
+  { value: 'blocked_time', label: 'Blocked Time' },
+  { value: 'other', label: 'Other' },
+];
+
+const publicEventTypeValues = new Set(['book_signing', 'poetry_night', 'popup_event', 'shop_drop']);
+
+const calendarStatusOptions = [
+  { value: 'scheduled', label: 'Scheduled' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'rescheduled', label: 'Rescheduled' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'published', label: 'Published' },
+];
+
+const emptyCalendarEventForm: CalendarEventFormValues = {
+  event_type: 'tattoo_appointment',
+  inquiry_type: '',
+  inquiry_id: '',
+  title: '',
+  description: '',
+  client_name: '',
+  client_email: '',
+  client_phone: '',
+  start_date: '',
+  start_time: '',
+  end_date: '',
+  end_time: '',
+  all_day: false,
+  location: '',
+  external_link: '',
+  status: 'scheduled',
+  is_public: false,
+  notes: '',
+};
+
+function newCalendarEventFormValues(overrides: Partial<CalendarEventFormValues> = {}): CalendarEventFormValues {
+  const eventType = overrides.event_type ?? emptyCalendarEventForm.event_type;
+  const publicFriendly = publicEventTypeValues.has(eventType);
+
+  return {
+    ...emptyCalendarEventForm,
+    start_date: isoDateKey(new Date()),
+    ...overrides,
+    event_type: eventType,
+    status: overrides.status ?? 'scheduled',
+    is_public: publicFriendly ? (overrides.is_public ?? true) : false,
+  };
+}
 
 function profileTextValue(profile: AdminProfile | null, keys: Array<keyof AdminProfile>) {
   for (const key of keys) {
@@ -180,6 +292,127 @@ function formatDate(value: string | null | undefined) {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+  });
+}
+
+function formatDateOnly(value: string | null | undefined) {
+  if (!value) return '-';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatMonthLabel(value: Date) {
+  return value.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function formatTime(value: string | null | undefined) {
+  if (!value) return '';
+  const [hourValue, minuteValue] = value.split(':');
+  const hour = Number(hourValue);
+  const minute = Number(minuteValue);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return value;
+
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatEventDateTime(event: CalendarEvent) {
+  const dateText = formatDateOnly(event.start_date);
+  if (event.all_day) return `${dateText} · All day`;
+
+  const start = formatTime(event.start_time);
+  const end = formatTime(event.end_time);
+  if (start && end) return `${dateText} · ${start} - ${end}`;
+  if (start) return `${dateText} · ${start}`;
+  return dateText;
+}
+
+function eventTypeLabel(value: string | null | undefined) {
+  const found = calendarEventTypes.find((eventType) => eventType.value === value);
+  return found?.label ?? statusLabel(value);
+}
+
+function isoDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function addMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function cleanOptional(value: string) {
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function coerceInquiryId(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : trimmed;
+}
+
+function calendarPayloadFromForm(values: CalendarEventFormValues) {
+  const canBePublic = publicEventTypeValues.has(values.event_type);
+
+  return {
+    event_type: values.event_type,
+    inquiry_type: cleanOptional(values.inquiry_type),
+    inquiry_id: coerceInquiryId(values.inquiry_id),
+    title: values.title.trim(),
+    description: cleanOptional(values.description),
+    client_name: cleanOptional(values.client_name),
+    client_email: cleanOptional(values.client_email),
+    client_phone: cleanOptional(values.client_phone),
+    start_date: values.start_date,
+    start_time: values.all_day ? null : cleanOptional(values.start_time),
+    end_date: cleanOptional(values.end_date),
+    end_time: values.all_day ? null : cleanOptional(values.end_time),
+    all_day: values.all_day,
+    location: cleanOptional(values.location),
+    external_link: cleanOptional(values.external_link),
+    status: values.status || 'scheduled',
+    is_public: canBePublic ? values.is_public : false,
+    notes: cleanOptional(values.notes),
+  };
+}
+
+function calendarEventToFormValues(event: CalendarEvent): CalendarEventFormValues {
+  return {
+    event_type: event.event_type || 'other',
+    inquiry_type: event.inquiry_type ?? '',
+    inquiry_id: event.inquiry_id === null || event.inquiry_id === undefined ? '' : String(event.inquiry_id),
+    title: event.title ?? '',
+    description: event.description ?? '',
+    client_name: event.client_name ?? '',
+    client_email: event.client_email ?? '',
+    client_phone: event.client_phone ?? '',
+    start_date: event.start_date ?? '',
+    start_time: event.start_time ?? '',
+    end_date: event.end_date ?? '',
+    end_time: event.end_time ?? '',
+    all_day: Boolean(event.all_day),
+    location: event.location ?? '',
+    external_link: event.external_link ?? '',
+    status: event.status ?? 'scheduled',
+    is_public: publicEventTypeValues.has(event.event_type) ? Boolean(event.is_public) : false,
+    notes: event.notes ?? '',
+  };
+}
+
+function sortCalendarEvents(events: CalendarEvent[]) {
+  return [...events].sort((left, right) => {
+    const leftTime = toTimestamp(`${left.start_date}T${left.start_time || '00:00:00'}`);
+    const rightTime = toTimestamp(`${right.start_date}T${right.start_time || '00:00:00'}`);
+    return leftTime - rightTime || left.title.localeCompare(right.title);
   });
 }
 
@@ -620,6 +853,80 @@ function ReferenceLinks({ value }: { value: string | null | undefined }) {
   );
 }
 
+function referenceSummary(value: string | null | undefined) {
+  const references = parseReferenceLinks(value);
+  if (references.length === 0) return '';
+  return references.map((reference) => `${reference.name}: ${reference.url}`).join('\n');
+}
+
+function validDateInput(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : '';
+}
+
+function bookingCalendarDraft(booking: BookingInquiry): CalendarEventFormValues {
+  const referenceText = referenceSummary(booking.reference_links);
+  const notes = [
+    booking.placement ? `Placement: ${booking.placement}` : '',
+    booking.size_estimate ? `Size: ${booking.size_estimate}` : '',
+    booking.budget ? `Budget: ${booking.budget}` : '',
+    booking.message ? `Message:\n${booking.message}` : '',
+    referenceText ? `Reference links:\n${referenceText}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  return {
+    ...newCalendarEventFormValues(),
+    event_type: 'tattoo_appointment',
+    inquiry_type: 'booking',
+    inquiry_id: String(booking.id),
+    title: booking.tattoo_idea?.trim() || 'Tattoo Appointment',
+    description: booking.tattoo_idea ?? '',
+    client_name: booking.name ?? '',
+    client_email: booking.email ?? '',
+    client_phone: booking.phone ?? '',
+    start_date: validDateInput(booking.preferred_date),
+    start_time: booking.preferred_time ?? '',
+    status: 'scheduled',
+    is_public: false,
+    notes,
+    updateInquiryStatus: true,
+    sourceKind: 'booking',
+    sourceId: booking.id,
+  };
+}
+
+function commissionCalendarDraft(commission: CommissionInquiry): CalendarEventFormValues {
+  const referenceText = referenceSummary(commission.reference_links);
+  const notes = [
+    commission.description ? `Description:\n${commission.description}` : '',
+    commission.budget ? `Budget: ${commission.budget}` : '',
+    commission.deadline ? `Deadline: ${commission.deadline}` : '',
+    referenceText ? `Reference links:\n${referenceText}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  return {
+    ...newCalendarEventFormValues(),
+    event_type: 'commission_work',
+    inquiry_type: 'commission',
+    inquiry_id: String(commission.id),
+    title: commission.commission_type?.trim() || 'Commission Work',
+    description: commission.description ?? '',
+    client_name: commission.name ?? '',
+    client_email: commission.email ?? '',
+    client_phone: commission.phone ?? '',
+    status: 'scheduled',
+    is_public: false,
+    notes,
+    updateInquiryStatus: true,
+    sourceKind: 'commission',
+    sourceId: commission.id,
+  };
+}
+
+function canCreateCalendarFromInquiry(status: string | null | undefined) {
+  return ['approved', 'contacted'].includes(normalizeStatus(status));
+}
+
 function AdminLoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -955,11 +1262,13 @@ function BookingSection({
   loading,
   error,
   onSave,
+  onAddToCalendar,
 }: {
   bookings: BookingInquiry[];
   loading: boolean;
   error?: string;
   onSave: (id: number | string, input: { status: string; adminNotes: string }) => Promise<void>;
+  onAddToCalendar: (values: CalendarEventFormValues) => void;
 }) {
   const [filter, setFilter] = useState<FilterValue>('all');
   const filteredBookings = bookings.filter((booking) => matchesFilter(booking.status, filter));
@@ -1002,6 +1311,17 @@ function BookingSection({
               <ReferenceLinks value={booking.reference_links} />
             </Field>
           </div>
+          {canCreateCalendarFromInquiry(booking.status) && (
+            <button
+              type="button"
+              onClick={() => onAddToCalendar(bookingCalendarDraft(booking))}
+              className="font-sans text-xs uppercase px-4 py-2.5 mt-5 inline-flex items-center gap-2 transition-all duration-300"
+              style={{ color: '#0A0A0A', backgroundColor: '#C4A265', border: '1px solid #C4A265', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+            >
+              <Plus size={14} />
+              Add to calendar
+            </button>
+          )}
           <AdminEditFields
             status={booking.status}
             adminNotes={booking.admin_notes}
@@ -1020,11 +1340,13 @@ function CommissionsSection({
   loading,
   error,
   onSave,
+  onAddToCalendar,
 }: {
   commissions: CommissionInquiry[];
   loading: boolean;
   error?: string;
   onSave: (id: number | string, input: { status: string; adminNotes: string }) => Promise<void>;
+  onAddToCalendar: (values: CalendarEventFormValues) => void;
 }) {
   const [filter, setFilter] = useState<FilterValue>('all');
   const filteredCommissions = commissions.filter((commission) => matchesFilter(commission.status, filter));
@@ -1065,6 +1387,17 @@ function CommissionsSection({
               <ReferenceLinks value={commission.reference_links} />
             </Field>
           </div>
+          {canCreateCalendarFromInquiry(commission.status) && (
+            <button
+              type="button"
+              onClick={() => onAddToCalendar(commissionCalendarDraft(commission))}
+              className="font-sans text-xs uppercase px-4 py-2.5 mt-5 inline-flex items-center gap-2 transition-all duration-300"
+              style={{ color: '#0A0A0A', backgroundColor: '#C4A265', border: '1px solid #C4A265', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+            >
+              <Plus size={14} />
+              Add to calendar
+            </button>
+          )}
           <AdminEditFields
             status={commission.status}
             adminNotes={commission.admin_notes}
@@ -1074,6 +1407,948 @@ function CommissionsSection({
         </article>
       ))}
       </div>
+    </div>
+  );
+}
+
+function CalendarInput({
+  id,
+  label,
+  value,
+  onChange,
+  type = 'text',
+  required = false,
+  disabled = false,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+        {label}{required ? ' *' : ''}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="w-full font-sans text-sm px-3 py-3 outline-none disabled:opacity-50"
+        style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+      />
+    </div>
+  );
+}
+
+function CalendarTextarea({
+  id,
+  label,
+  value,
+  onChange,
+  rows = 3,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+        {label}
+      </label>
+      <textarea
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={rows}
+        placeholder={placeholder}
+        className="w-full font-sans text-sm px-3 py-3 resize-y outline-none"
+        style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6, lineHeight: 1.55 }}
+      />
+    </div>
+  );
+}
+
+function CalendarOptionalSection({
+  id,
+  title,
+  helper,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  title: string;
+  helper?: string;
+  open: boolean;
+  onToggle: (id: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <section style={{ borderTop: '1px solid #1A1A1A', paddingTop: 14 }}>
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        className="w-full flex items-start justify-between gap-4 text-left"
+        style={{ color: '#E8DDD4', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        aria-expanded={open}
+      >
+        <span>
+          <span className="font-serif text-base" style={{ fontWeight: 600 }}>{title}</span>
+          {helper && (
+            <span className="font-sans text-xs block mt-1" style={{ color: '#E8DDD4', opacity: 0.52, lineHeight: 1.45 }}>
+              {helper}
+            </span>
+          )}
+        </span>
+        <span className="font-sans text-xs uppercase" style={{ color: '#F4A5AE', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
+          {open ? 'Hide' : 'Show'}
+        </span>
+      </button>
+      {open && <div className="mt-4">{children}</div>}
+    </section>
+  );
+}
+
+function CalendarEventForm({
+  title,
+  initialValues,
+  onSubmit,
+  onDelete,
+  onCancel,
+}: {
+  title: string;
+  initialValues: CalendarEventFormValues;
+  onSubmit: (values: CalendarEventFormValues) => Promise<void>;
+  onDelete?: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [values, setValues] = useState(initialValues);
+  const [multiDay, setMultiDay] = useState(Boolean(initialValues.end_date));
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    moreDetails: false,
+    clientInfo: false,
+    linkedInquiry: false,
+    internalNotes: false,
+    publicSettings: publicEventTypeValues.has(initialValues.event_type),
+  });
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    setValues(initialValues);
+    setMultiDay(Boolean(initialValues.end_date));
+    setExpanded({
+      moreDetails: false,
+      clientInfo: false,
+      linkedInquiry: false,
+      internalNotes: false,
+      publicSettings: publicEventTypeValues.has(initialValues.event_type),
+    });
+    setSaveError('');
+  }, [initialValues]);
+
+  const publicFriendlyType = publicEventTypeValues.has(values.event_type);
+  const appointmentLike = values.event_type === 'tattoo_appointment' || values.event_type === 'commission_work';
+  const publicEvent = publicFriendlyType;
+  const blockedTime = values.event_type === 'blocked_time';
+  const showClientQuickFields = appointmentLike;
+  const showInternalNotesQuickField = appointmentLike || blockedTime;
+  const showPublicEventDetails = publicEvent;
+  const showClientSection = !publicEvent && !blockedTime;
+  const linkedInquiryLabel = values.inquiry_type && values.inquiry_id ? `${statusLabel(values.inquiry_type)} #${values.inquiry_id}` : '';
+
+  const updateValue = (key: keyof CalendarEventFormValues, value: string | boolean) => {
+    setValues((current) => {
+      if (key === 'event_type' && typeof value === 'string') {
+        const nextPublicFriendly = publicEventTypeValues.has(value);
+        const wasPublicFriendly = publicEventTypeValues.has(current.event_type);
+        return {
+          ...current,
+          event_type: value,
+          is_public: nextPublicFriendly ? (wasPublicFriendly ? current.is_public : true) : false,
+        };
+      }
+
+      if (key === 'is_public') {
+        return {
+          ...current,
+          is_public: publicEventTypeValues.has(current.event_type) ? Boolean(value) : false,
+        };
+      }
+
+      return { ...current, [key]: value };
+    });
+  };
+
+  const toggleSection = (id: string) => {
+    setExpanded((current) => ({ ...current, [id]: !current[id] }));
+  };
+
+  const handleMultiDayChange = (checked: boolean) => {
+    setMultiDay(checked);
+    if (!checked) updateValue('end_date', '');
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true);
+    setSaveError('');
+
+    try {
+      await onSubmit(values);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save this event.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    if (!window.confirm('Delete this calendar event?')) return;
+
+    setDeleting(true);
+    setSaveError('');
+
+    try {
+      await onDelete();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not delete this event.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mb-6 mx-auto"
+      style={{ maxWidth: 900, border: '1px solid #2A2A2A', borderRadius: 8, backgroundColor: '#141414', padding: 18 }}
+    >
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <p className="font-sans text-xs uppercase" style={{ color: '#F4A5AE', letterSpacing: '0.12em' }}>
+            Calendar
+          </p>
+          <h2 className="font-serif text-xl mt-2" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+            {title}
+          </h2>
+          {linkedInquiryLabel && (
+            <p className="font-sans text-xs mt-2" style={{ color: '#C4A265' }}>
+              Linked to {linkedInquiryLabel}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex items-center justify-center"
+          aria-label="Cancel calendar event form"
+          style={{ width: 34, height: 34, color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer' }}
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CalendarInput
+          id="calendar-title"
+          label="Title"
+          value={values.title}
+          onChange={(value) => updateValue('title', value)}
+          required
+          placeholder="Tattoo appointment, poetry night, shop drop..."
+        />
+
+        <div>
+          <label htmlFor="calendar-event-type" className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+            Event type *
+          </label>
+          <select
+            id="calendar-event-type"
+            value={values.event_type}
+            onChange={(event) => updateValue('event_type', event.target.value)}
+            className="w-full font-sans text-sm px-3 py-3 outline-none"
+            style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+          >
+            {calendarEventTypes.map((eventType) => (
+              <option key={eventType.value} value={eventType.value}>
+                {eventType.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <CalendarInput
+          id="calendar-start-date"
+          label="Start date"
+          value={values.start_date}
+          onChange={(value) => updateValue('start_date', value)}
+          type="date"
+          required
+        />
+
+        <div>
+          <label htmlFor="calendar-status" className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+            Status
+          </label>
+          <select
+            id="calendar-status"
+            value={values.status}
+            onChange={(event) => updateValue('status', event.target.value)}
+            className="w-full font-sans text-sm px-3 py-3 outline-none"
+            style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+          >
+            {calendarStatusOptions.map((status) => (
+              <option key={status.value} value={status.value}>
+                {status.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <CalendarInput
+          id="calendar-start-time"
+          label="Start time"
+          value={values.start_time}
+          onChange={(value) => updateValue('start_time', value)}
+          type="time"
+          disabled={values.all_day}
+          required={!values.all_day}
+        />
+
+        <CalendarInput
+          id="calendar-end-time"
+          label="End time"
+          value={values.end_time}
+          onChange={(value) => updateValue('end_time', value)}
+          type="time"
+          disabled={values.all_day}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 mt-4">
+        <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+          <input
+            type="checkbox"
+            checked={values.all_day}
+            onChange={(event) => updateValue('all_day', event.target.checked)}
+          />
+          All day
+        </label>
+        <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+          <input
+            type="checkbox"
+            checked={multiDay}
+            onChange={(event) => handleMultiDayChange(event.target.checked)}
+          />
+          Multi-day event
+        </label>
+      </div>
+
+      {multiDay && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <CalendarInput
+            id="calendar-end-date"
+            label="End date"
+            value={values.end_date}
+            onChange={(value) => updateValue('end_date', value)}
+            type="date"
+          />
+        </div>
+      )}
+
+      {showClientQuickFields && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+          <CalendarInput
+            id="calendar-client-name"
+            label="Client name"
+            value={values.client_name}
+            onChange={(value) => updateValue('client_name', value)}
+          />
+          <CalendarInput
+            id="calendar-client-phone"
+            label="Client phone"
+            value={values.client_phone}
+            onChange={(value) => updateValue('client_phone', value)}
+          />
+        </div>
+      )}
+
+      {showPublicEventDetails && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+          <CalendarInput
+            id="calendar-location"
+            label="Location"
+            value={values.location}
+            onChange={(value) => updateValue('location', value)}
+          />
+          <CalendarInput
+            id="calendar-external-link"
+            label="Event Link"
+            value={values.external_link}
+            onChange={(value) => updateValue('external_link', value)}
+            type="url"
+          />
+          <div className="md:col-span-2">
+            <CalendarTextarea
+              id="calendar-description"
+              label="Description"
+              value={values.description}
+              onChange={(value) => updateValue('description', value)}
+              rows={3}
+            />
+          </div>
+        </div>
+      )}
+
+      {showInternalNotesQuickField && (
+        <div className="mt-5">
+          <CalendarTextarea
+            id="calendar-notes"
+            label="Internal Notes"
+            value={values.notes}
+            onChange={(value) => updateValue('notes', value)}
+            rows={3}
+            placeholder="Private notes for the admin team..."
+          />
+        </div>
+      )}
+
+      <div className="space-y-4 mt-6">
+        <CalendarOptionalSection
+          id="moreDetails"
+          title="More Details"
+          helper="Add a location, event link, or description when it matters."
+          open={Boolean(expanded.moreDetails)}
+          onToggle={toggleSection}
+        >
+          {showPublicEventDetails ? (
+            <p className="font-sans text-sm" style={{ color: '#E8DDD4', opacity: 0.62 }}>
+              Public event details are already shown above.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CalendarInput
+                id="calendar-location"
+                label="Location"
+                value={values.location}
+                onChange={(value) => updateValue('location', value)}
+              />
+              <CalendarInput
+                id="calendar-external-link"
+                label="Event Link"
+                value={values.external_link}
+                onChange={(value) => updateValue('external_link', value)}
+                type="url"
+              />
+              <div className="md:col-span-2">
+                <CalendarTextarea
+                  id="calendar-description"
+                  label="Description"
+                  value={values.description}
+                  onChange={(value) => updateValue('description', value)}
+                />
+              </div>
+            </div>
+          )}
+        </CalendarOptionalSection>
+
+        {showClientSection && (
+          <CalendarOptionalSection
+            id="clientInfo"
+            title="Client Info"
+            helper={appointmentLike ? 'Email is optional; name and phone are above for quick scheduling.' : 'Use only for private internal events.'}
+            open={Boolean(expanded.clientInfo)}
+            onToggle={toggleSection}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {!appointmentLike && (
+                <>
+                  <CalendarInput
+                    id="calendar-client-name"
+                    label="Client name"
+                    value={values.client_name}
+                    onChange={(value) => updateValue('client_name', value)}
+                  />
+                  <CalendarInput
+                    id="calendar-client-phone"
+                    label="Client phone"
+                    value={values.client_phone}
+                    onChange={(value) => updateValue('client_phone', value)}
+                  />
+                </>
+              )}
+              <CalendarInput
+                id="calendar-client-email"
+                label="Client email"
+                value={values.client_email}
+                onChange={(value) => updateValue('client_email', value)}
+                type="email"
+              />
+            </div>
+          </CalendarOptionalSection>
+        )}
+
+        <CalendarOptionalSection
+          id="linkedInquiry"
+          title="Linked Inquiry"
+          helper="Usually filled automatically when adding from a booking or commission card."
+          open={Boolean(expanded.linkedInquiry)}
+          onToggle={toggleSection}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CalendarInput
+              id="calendar-inquiry-type"
+              label="Linked Inquiry Type"
+              value={values.inquiry_type}
+              onChange={(value) => updateValue('inquiry_type', value)}
+              placeholder="booking or commission"
+            />
+            <CalendarInput
+              id="calendar-inquiry-id"
+              label="Linked Inquiry ID"
+              value={values.inquiry_id}
+              onChange={(value) => updateValue('inquiry_id', value)}
+            />
+          </div>
+        </CalendarOptionalSection>
+
+        {!showInternalNotesQuickField && (
+          <CalendarOptionalSection
+            id="internalNotes"
+            title="Internal Notes"
+            helper="Private notes never appear on the public site."
+            open={Boolean(expanded.internalNotes)}
+            onToggle={toggleSection}
+          >
+            <CalendarTextarea
+              id="calendar-notes"
+              label="Internal Notes"
+              value={values.notes}
+              onChange={(value) => updateValue('notes', value)}
+              rows={4}
+            />
+          </CalendarOptionalSection>
+        )}
+
+        {publicFriendlyType && (
+          <CalendarOptionalSection
+            id="publicSettings"
+            title="Public Event Settings"
+            helper="Only public-safe event types can be published to the live site."
+            open={Boolean(expanded.publicSettings)}
+            onToggle={toggleSection}
+          >
+            <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+              <input
+                type="checkbox"
+                checked={values.is_public}
+                onChange={(event) => updateValue('is_public', event.target.checked)}
+              />
+              Show this event publicly later
+            </label>
+          </CalendarOptionalSection>
+        )}
+      </div>
+
+      {!publicFriendlyType && (
+        <p className="font-sans text-xs mt-5" style={{ color: '#E8DDD4', opacity: 0.58, lineHeight: 1.5 }}>
+          Tattoo appointments, commission work, blocked time, and internal events stay private.
+        </p>
+      )}
+
+      {values.sourceKind && (
+        <label className="font-sans text-sm flex items-center gap-2 mt-5" style={{ color: '#E8DDD4' }}>
+          <input
+            type="checkbox"
+            checked={Boolean(values.updateInquiryStatus)}
+            onChange={(event) => updateValue('updateInquiryStatus', event.target.checked)}
+          />
+          Update inquiry status to scheduled after saving
+        </label>
+      )}
+
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mt-6">
+        <div>{saveError && <StatusMessage tone="error">{saveError}</StatusMessage>}</div>
+        <div className="flex flex-wrap items-center gap-3">
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              disabled={saving || deleting}
+              className="font-sans text-xs uppercase px-4 py-2.5 inline-flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
+              style={{ color: '#D14A6E', backgroundColor: 'transparent', border: '1px solid #D14A6E', borderRadius: 6, cursor: deleting ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+            >
+              {deleting ? <Loader2 className="animate-spin" size={14} /> : <X size={14} />}
+              {deleting ? 'Deleting' : 'Delete'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCancel}
+            className="font-sans text-xs uppercase px-4 py-2.5 inline-flex items-center gap-2 transition-all duration-300"
+            style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+          >
+            <X size={14} />
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="font-sans text-xs uppercase px-4 py-2.5 inline-flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
+            style={{ color: '#0A0A0A', backgroundColor: '#F4A5AE', border: '1px solid #F4A5AE', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+          >
+            {saving ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
+            {saving ? 'Saving' : 'Save Event'}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function CalendarEventCard({ event, onEdit }: { event: CalendarEvent; onEdit: (event: CalendarEvent) => void }) {
+  return (
+    <article style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 18 }}>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="font-sans text-xs uppercase" style={{ color: '#F4A5AE', letterSpacing: '0.1em' }}>
+              {eventTypeLabel(event.event_type)}
+            </span>
+            <StatusBadge status={event.status} />
+            <span
+              className="font-sans text-xs uppercase px-2.5 py-1"
+              style={{ color: event.is_public ? '#6B8F71' : '#C4A265', border: `1px solid ${event.is_public ? '#6B8F71' : '#C4A265'}`, borderRadius: 4, letterSpacing: '0.08em' }}
+            >
+              {event.is_public ? 'Public' : 'Private'}
+            </span>
+          </div>
+          <h3 className="font-serif text-lg" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+            {event.title}
+          </h3>
+          <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.72 }}>
+            {formatEventDateTime(event)}
+          </p>
+          {event.location && (
+            <p className="font-sans text-sm mt-1" style={{ color: '#E8DDD4', opacity: 0.58 }}>
+              {event.location}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => onEdit(event)}
+          className="font-sans text-xs uppercase px-3 py-2 inline-flex items-center justify-center gap-2 transition-all duration-300"
+          style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+        >
+          <Edit3 size={14} />
+          Edit
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function CalendarSection({
+  events,
+  loading,
+  error,
+  draft,
+  onDraftConsumed,
+  onCreate,
+  onUpdate,
+  onDelete,
+}: {
+  events: CalendarEvent[];
+  loading: boolean;
+  error: string;
+  draft: CalendarEventFormValues | null;
+  onDraftConsumed: () => void;
+  onCreate: (values: CalendarEventFormValues) => Promise<void>;
+  onUpdate: (id: number | string, values: CalendarEventFormValues) => Promise<void>;
+  onDelete: (id: number | string) => Promise<void>;
+}) {
+  const [viewMode, setViewMode] = useState<'month' | 'list'>('month');
+  const [viewDate, setViewDate] = useState(new Date());
+  const [eventTypeFilter, setEventTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [visibilityFilter, setVisibilityFilter] = useState<CalendarVisibilityFilter>('all');
+  const [formValues, setFormValues] = useState<CalendarEventFormValues | null>(null);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    if (!draft) return;
+    setFormValues(draft);
+    setEditingEvent(null);
+    setNotice('');
+    onDraftConsumed();
+  }, [draft, onDraftConsumed]);
+
+  const filteredEvents = useMemo(() => {
+    return events
+      .filter((event) => eventTypeFilter === 'all' || event.event_type === eventTypeFilter)
+      .filter((event) => statusFilter === 'all' || normalizeStatus(event.status) === statusFilter)
+      .filter((event) => {
+        if (visibilityFilter === 'all') return true;
+        return visibilityFilter === 'public' ? Boolean(event.is_public) : !event.is_public;
+      })
+      .sort((left, right) => {
+        const dateDiff = toTimestamp(`${left.start_date}T${left.start_time || '00:00:00'}`) - toTimestamp(`${right.start_date}T${right.start_time || '00:00:00'}`);
+        return dateDiff || String(left.title).localeCompare(String(right.title));
+      });
+  }, [eventTypeFilter, events, statusFilter, visibilityFilter]);
+
+  const eventsByDate = useMemo(() => {
+    return filteredEvents.reduce<Record<string, CalendarEvent[]>>((grouped, event) => {
+      grouped[event.start_date] = [...(grouped[event.start_date] ?? []), event];
+      return grouped;
+    }, {});
+  }, [filteredEvents]);
+
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+    const slots: (Date | null)[] = Array.from({ length: firstDay.getDay() }, () => null);
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      slots.push(new Date(viewDate.getFullYear(), viewDate.getMonth(), day));
+    }
+    return slots;
+  }, [viewDate]);
+
+  const openCreateForm = () => {
+    setFormValues(newCalendarEventFormValues());
+    setEditingEvent(null);
+    setNotice('');
+  };
+
+  const openEditForm = (event: CalendarEvent) => {
+    setFormValues(calendarEventToFormValues(event));
+    setEditingEvent(event);
+    setNotice('');
+  };
+
+  const closeForm = () => {
+    setFormValues(null);
+    setEditingEvent(null);
+  };
+
+  const handleSubmit = async (values: CalendarEventFormValues) => {
+    if (editingEvent) {
+      await onUpdate(editingEvent.id, values);
+      setNotice('Calendar event saved.');
+    } else {
+      await onCreate(values);
+      setNotice('Calendar event created.');
+    }
+    closeForm();
+  };
+
+  const handleDelete = async () => {
+    if (!editingEvent) return;
+    await onDelete(editingEvent.id);
+    setNotice('Calendar event deleted.');
+    closeForm();
+  };
+
+  if (loading) return <InlineLoading label="Loading calendar events" />;
+  if (error) return <ErrorPanel message={error} />;
+
+  return (
+    <div>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={openCreateForm}
+            className="font-sans text-xs uppercase px-4 py-2.5 inline-flex items-center gap-2 transition-all duration-300"
+            style={{ color: '#0A0A0A', backgroundColor: '#F4A5AE', border: '1px solid #F4A5AE', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+          >
+            <Plus size={14} />
+            Add Event
+          </button>
+          {notice && <StatusMessage tone="success">{notice}</StatusMessage>}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setViewMode('month')}
+            className="font-sans text-xs uppercase px-3 py-2"
+            style={{ color: viewMode === 'month' ? '#0A0A0A' : '#E8DDD4', backgroundColor: viewMode === 'month' ? '#C4A265' : 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.08em' }}
+          >
+            Month
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className="font-sans text-xs uppercase px-3 py-2"
+            style={{ color: viewMode === 'list' ? '#0A0A0A' : '#E8DDD4', backgroundColor: viewMode === 'list' ? '#C4A265' : 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.08em' }}
+          >
+            List
+          </button>
+        </div>
+      </div>
+
+      {formValues && (
+        <CalendarEventForm
+          title={editingEvent ? 'Edit Event' : 'Add Event'}
+          initialValues={formValues}
+          onSubmit={handleSubmit}
+          onDelete={editingEvent ? handleDelete : undefined}
+          onCancel={closeForm}
+        />
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+        <select
+          aria-label="Filter calendar events by event type"
+          value={eventTypeFilter}
+          onChange={(event) => setEventTypeFilter(event.target.value)}
+          className="font-sans text-sm px-3 py-3 outline-none"
+          style={{ color: '#E8DDD4', backgroundColor: '#141414', border: '1px solid #2A2A2A', borderRadius: 6 }}
+        >
+          <option value="all">All event types</option>
+          {calendarEventTypes.map((eventType) => (
+            <option key={eventType.value} value={eventType.value}>
+              {eventType.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          aria-label="Filter calendar events by status"
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          className="font-sans text-sm px-3 py-3 outline-none"
+          style={{ color: '#E8DDD4', backgroundColor: '#141414', border: '1px solid #2A2A2A', borderRadius: 6 }}
+        >
+          <option value="all">All statuses</option>
+          {calendarStatusOptions.map((status) => (
+            <option key={status.value} value={status.value}>
+              {status.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          aria-label="Filter calendar events by visibility"
+          value={visibilityFilter}
+          onChange={(event) => setVisibilityFilter(event.target.value as CalendarVisibilityFilter)}
+          className="font-sans text-sm px-3 py-3 outline-none"
+          style={{ color: '#E8DDD4', backgroundColor: '#141414', border: '1px solid #2A2A2A', borderRadius: 6 }}
+        >
+          <option value="all">Public and private</option>
+          <option value="public">Public only</option>
+          <option value="private">Private only</option>
+        </select>
+      </div>
+
+      {events.length === 0 ? (
+        <EmptyState>No calendar events yet.</EmptyState>
+      ) : filteredEvents.length === 0 ? (
+        <EmptyState>No calendar events match these filters.</EmptyState>
+      ) : viewMode === 'list' ? (
+        <div className="space-y-3">
+          {filteredEvents.map((event) => (
+            <CalendarEventCard key={event.id} event={event} onEdit={openEditForm} />
+          ))}
+        </div>
+      ) : (
+        <div>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <button
+              type="button"
+              onClick={() => setViewDate((current) => addMonths(current, -1))}
+              aria-label="Previous month"
+              className="inline-flex items-center justify-center"
+              style={{ width: 36, height: 36, color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer' }}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <h2 className="font-serif text-xl" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+              {formatMonthLabel(viewDate)}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setViewDate((current) => addMonths(current, 1))}
+              aria-label="Next month"
+              className="inline-flex items-center justify-center"
+              style={{ width: 36, height: 36, color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer' }}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+              <div key={day} className="font-sans text-[10px] uppercase text-center py-2" style={{ color: '#E8DDD4', opacity: 0.45, letterSpacing: '0.08em' }}>
+                {day}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+            {calendarDays.map((day, index) => {
+              const dateKey = day ? isoDateKey(day) : '';
+              const dayEvents = dateKey ? eventsByDate[dateKey] ?? [] : [];
+
+              return (
+                <div
+                  key={dateKey || `blank-${index}`}
+                  className="min-h-[110px]"
+                  style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: day ? '#141414' : 'transparent', padding: day ? 10 : 0 }}
+                >
+                  {day && (
+                    <>
+                      <p className="font-sans text-xs mb-2" style={{ color: '#E8DDD4', opacity: 0.62 }}>
+                        {day.getDate()}
+                      </p>
+                      <div className="space-y-1.5">
+                        {dayEvents.slice(0, 3).map((event) => (
+                          <button
+                            key={event.id}
+                            type="button"
+                            onClick={() => openEditForm(event)}
+                            className="w-full text-left font-sans text-xs px-2 py-1.5"
+                            style={{ color: '#E8DDD4', backgroundColor: event.is_public ? 'rgba(107, 143, 113, 0.18)' : 'rgba(244, 165, 174, 0.12)', border: '1px solid #2A2A2A', borderRadius: 5, cursor: 'pointer', lineHeight: 1.35 }}
+                          >
+                            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.title}</span>
+                            <span style={{ opacity: 0.62 }}>{formatTime(event.start_time) || eventTypeLabel(event.event_type)}</span>
+                          </button>
+                        ))}
+                        {dayEvents.length > 3 && (
+                          <p className="font-sans text-[11px]" style={{ color: '#E8DDD4', opacity: 0.5 }}>
+                            +{dayEvents.length - 3} more
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1095,6 +2370,9 @@ function AdminPortal({
   const [dashboardData, setDashboardData] = useState<DashboardData>(emptyDashboardData);
   const [dashboardErrors, setDashboardErrors] = useState<DashboardErrors>({});
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [calendarError, setCalendarError] = useState('');
+  const [calendarDraft, setCalendarDraft] = useState<CalendarEventFormValues | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -1111,27 +2389,32 @@ function AdminPortal({
       setDashboardLoading(true);
     }
 
-    const [messagesResult, bookingsResult, commissionsResult] = await Promise.all([
+    const [messagesResult, bookingsResult, commissionsResult, calendarResult] = await Promise.all([
       supabase.from('contact_messages').select('*').order('created_at', { ascending: false }),
       supabase.from('booking_inquiries').select('*').order('created_at', { ascending: false }),
       supabase.from('commission_inquiries').select('*').order('created_at', { ascending: false }),
+      supabase.from('calendar_events').select('*').order('start_date', { ascending: true }).order('start_time', { ascending: true }),
     ]);
 
     const nextErrors: DashboardErrors = {};
     if (messagesResult.error) nextErrors.messages = `Unable to load messages: ${messagesResult.error.message}`;
     if (bookingsResult.error) nextErrors.bookings = `Unable to load tattoo bookings: ${bookingsResult.error.message}`;
     if (commissionsResult.error) nextErrors.commissions = `Unable to load commission requests: ${commissionsResult.error.message}`;
+    setCalendarError(calendarResult.error ? `Unable to load calendar events: ${calendarResult.error.message}` : '');
 
     setDashboardData((current) => ({
       messages: messagesResult.error ? current.messages : ((messagesResult.data ?? []) as ContactMessage[]),
       bookings: bookingsResult.error ? current.bookings : ((bookingsResult.data ?? []) as BookingInquiry[]),
       commissions: commissionsResult.error ? current.commissions : ((commissionsResult.data ?? []) as CommissionInquiry[]),
     }));
+    if (!calendarResult.error) {
+      setCalendarEvents((calendarResult.data ?? []) as CalendarEvent[]);
+    }
     setDashboardErrors(nextErrors);
     setDashboardLoading(false);
     setRefreshing(false);
 
-    if (Object.keys(nextErrors).length === 0) {
+    if (Object.keys(nextErrors).length === 0 && !calendarResult.error) {
       setLastUpdated(new Date());
       setRefreshNotice(refresh ? 'Dashboard refreshed.' : '');
     }
@@ -1175,6 +2458,91 @@ function AdminPortal({
     [],
   );
 
+  const updateInquiryStatusToScheduled = useCallback(async (sourceKind: 'booking' | 'commission', sourceId: number | string) => {
+    const table = sourceKind === 'booking' ? 'booking_inquiries' : 'commission_inquiries';
+    const dataKey = sourceKind === 'booking' ? 'bookings' : 'commissions';
+
+    const { data, error } = await supabase
+      .from(table)
+      .update({ status: 'scheduled' })
+      .eq('id', sourceId)
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(`Calendar event saved, but the inquiry status could not be updated: ${error.message}`);
+    }
+
+    if (data) {
+      setDashboardData((current) => ({
+        ...current,
+        [dataKey]: current[dataKey].map((item) => (item.id === sourceId ? data : item)),
+      }) as DashboardData);
+    }
+  }, []);
+
+  const createCalendarEvent = useCallback(
+    async (values: CalendarEventFormValues) => {
+      const { data, error } = await supabase
+        .from('calendar_events')
+        .insert(calendarPayloadFromForm(values))
+        .select('*')
+        .single();
+
+      if (error) {
+        throw new Error(error.message || 'Could not create calendar event.');
+      }
+
+      if (!data) {
+        throw new Error('Could not create calendar event.');
+      }
+
+      setCalendarEvents((current) => sortCalendarEvents([...(current ?? []), data as CalendarEvent]));
+
+      if (values.updateInquiryStatus && values.sourceKind && values.sourceId !== undefined) {
+        await updateInquiryStatusToScheduled(values.sourceKind, values.sourceId);
+      }
+    },
+    [updateInquiryStatusToScheduled],
+  );
+
+  const updateCalendarEvent = useCallback(async (id: number | string, values: CalendarEventFormValues) => {
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .update(calendarPayloadFromForm(values))
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(error.message || 'Could not update calendar event.');
+    }
+
+    if (!data) {
+      throw new Error('Could not update calendar event.');
+    }
+
+    setCalendarEvents((current) => sortCalendarEvents(current.map((event) => (event.id === id ? (data as CalendarEvent) : event))));
+  }, []);
+
+  const deleteCalendarEvent = useCallback(async (id: number | string) => {
+    const { error } = await supabase
+      .from('calendar_events')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      throw new Error(error.message || 'Could not delete calendar event.');
+    }
+
+    setCalendarEvents((current) => current.filter((event) => event.id !== id));
+  }, []);
+
+  const openCalendarDraft = useCallback((values: CalendarEventFormValues) => {
+    setCalendarDraft(values);
+    setActiveTab('calendar');
+  }, []);
+
   const tabs = [
     {
       id: 'overview' as const,
@@ -1199,6 +2567,12 @@ function AdminPortal({
       label: 'Commission Requests',
       icon: <Palette size={16} />,
       count: dashboardData.commissions.length,
+    },
+    {
+      id: 'calendar' as const,
+      label: 'Calendar',
+      icon: <Calendar size={16} />,
+      count: calendarEvents.length,
     },
   ];
 
@@ -1338,6 +2712,7 @@ function AdminPortal({
                   loading={dashboardLoading}
                   error={dashboardErrors.bookings}
                   onSave={(id, input) => updateSubmission('bookings', id, input)}
+                  onAddToCalendar={openCalendarDraft}
                 />
               )}
               {activeTab === 'commissions' && (
@@ -1346,6 +2721,19 @@ function AdminPortal({
                   loading={dashboardLoading}
                   error={dashboardErrors.commissions}
                   onSave={(id, input) => updateSubmission('commissions', id, input)}
+                  onAddToCalendar={openCalendarDraft}
+                />
+              )}
+              {activeTab === 'calendar' && (
+                <CalendarSection
+                  events={calendarEvents}
+                  loading={dashboardLoading}
+                  error={calendarError}
+                  draft={calendarDraft}
+                  onDraftConsumed={() => setCalendarDraft(null)}
+                  onCreate={createCalendarEvent}
+                  onUpdate={updateCalendarEvent}
+                  onDelete={deleteCalendarEvent}
                 />
               )}
             </div>
