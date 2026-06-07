@@ -3,6 +3,7 @@ import HeroSection from '../sections/HeroSection';
 import AboutStrip from '../sections/AboutStrip';
 import VenturesGrid from '../sections/VenturesGrid';
 import FeaturedShowcase from '../sections/FeaturedShowcase';
+import UpcomingEventsSection from '../sections/UpcomingEventsSection';
 import ShopSection from '../sections/ShopSection';
 import FooterSection from '../sections/FooterSection';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
@@ -17,6 +18,7 @@ export default function HomePage() {
       <AboutStrip />
       <VenturesGrid />
       <FeaturedShowcase />
+      <UpcomingEventsSection />
       <ShopSection />
       <FooterSection />
     </main>

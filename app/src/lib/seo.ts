@@ -35,6 +35,12 @@ export const routeMetadata = {
     path: "/shop",
     image: "/images/sticker_pdf_page_3.jpg",
   },
+  events: {
+    title: "Events | The Gaston Collective",
+    description: "Upcoming book signings, poetry nights, pop-ups, and shop drops from The Gaston Collective.",
+    path: "/events",
+    image: "/images/tattoo_2.jpg",
+  },
   admin: {
     title: "Admin | The Gaston Collective",
     description: "Secure owner dashboard for The Gaston Collective inquiries, bookings, commissions, and monitoring.",

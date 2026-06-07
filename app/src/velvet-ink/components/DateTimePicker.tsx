@@ -1,5 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, X, Clock, CalendarDays } from 'lucide-react';
+import {
+  bookingTimeOverlapsUnavailableSlot,
+  dateHasAllDayBlock,
+  getUnavailableBookingSlots,
+  type UnavailableBookingSlot,
+} from '@/lib/bookingAvailability';
 import {
   BLOCKED_DATES,
   BLOCK_SUNDAYS,
@@ -47,6 +53,25 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
   const today = new Date();
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [unavailableSlotsByDate, setUnavailableSlotsByDate] = useState<Record<string, UnavailableBookingSlot[]>>({});
+  const [availabilityLoadingDate, setAvailabilityLoadingDate] = useState<string | null>(null);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+
+  const loadUnavailableSlots = useCallback(async (dateKey: string) => {
+    setAvailabilityLoadingDate(dateKey);
+    setAvailabilityError(null);
+
+    try {
+      const slots = await getUnavailableBookingSlots(dateKey);
+      setUnavailableSlotsByDate((current) => ({ ...current, [dateKey]: slots }));
+      return slots;
+    } catch (error) {
+      setAvailabilityError(error instanceof Error ? error.message : 'Unable to check booking availability.');
+      return null;
+    } finally {
+      setAvailabilityLoadingDate((current) => (current === dateKey ? null : current));
+    }
+  }, []);
 
   const minDate = useMemo(() => {
     const d = new Date();
@@ -66,6 +91,7 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
     if (date < minDate || date > maxDate) return true;
 
     if (BLOCKED_DATES.includes(key)) return true;
+    if (dateHasAllDayBlock(unavailableSlotsByDate[key] ?? [])) return true;
 
     const day = date.getDay();
     if (BLOCK_SUNDAYS && day === 0) return true;
@@ -79,10 +105,16 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
     return selections.some((s) => s.date === key);
   };
 
-  const getAvailableTimesForDate = (dateKey: string): string[] => {
-    const blocked = BLOCKED_TIME_SLOTS[dateKey] || [];
-    return TIME_SLOTS.filter((t) => !blocked.includes(t));
+  const isTimeBlocked = (dateKey: string, time: string): boolean => {
+    const staticallyBlocked = (BLOCKED_TIME_SLOTS[dateKey] || []).includes(time);
+    const calendarBlocked = bookingTimeOverlapsUnavailableSlot(time, unavailableSlotsByDate[dateKey] ?? []);
+    return staticallyBlocked || calendarBlocked;
   };
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    void loadUnavailableSlots(selectedDate);
+  }, [loadUnavailableSlots, selectedDate]);
 
   const handleDateClick = (date: Date) => {
     if (isDateBlocked(date)) return;
@@ -90,9 +122,18 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
     setSelectedDate(selectedDate === key ? null : key);
   };
 
-  const handleTimeSelect = (time: string) => {
+  const handleTimeSelect = async (time: string) => {
     if (!selectedDate) return;
     if (selections.length >= 3) return;
+
+    const unavailableSlots = await loadUnavailableSlots(selectedDate);
+    if (!unavailableSlots) return;
+
+    const staticBlock = (BLOCKED_TIME_SLOTS[selectedDate] || []).includes(time);
+    if (staticBlock || bookingTimeOverlapsUnavailableSlot(time, unavailableSlots)) {
+      setAvailabilityError('That time is no longer available. Please choose another time.');
+      return;
+    }
 
     const dateObj = new Date(selectedDate + 'T00:00:00');
     const label = `${MONTHS[dateObj.getMonth()]} ${dateObj.getDate()} at ${time}`;
@@ -310,27 +351,50 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
                 <p className="font-sans text-sm" style={{ color: '#D14A6E', opacity: 0.7 }}>
                   You've already selected 3 preferred times. Remove one above to choose another.
                 </p>
+              ) : dateHasAllDayBlock(unavailableSlotsByDate[selectedDate] ?? []) ? (
+                <p role="alert" className="font-sans text-sm" style={{ color: '#F4A5AE', opacity: 0.85, lineHeight: 1.5 }}>
+                  This date is unavailable for booking. Please choose another date.
+                </p>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {getAvailableTimesForDate(selectedDate).map((time) => (
-                    <button
-                      key={time}
-                      type="button"
-                      aria-label={`Select ${time}`}
-                      onClick={() => handleTimeSelect(time)}
-                      className="font-sans text-sm py-3 px-4 border transition-all duration-300 hover:border-[#D14A6E] hover:text-[#D14A6E]"
-                      style={{
-                        color: '#E8DDD4',
-                        borderColor: '#1A1A1A',
-                        backgroundColor: 'transparent',
-                        cursor: 'pointer',
-                      }}
-                      data-cursor-hover
-                    >
-                      {time}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  {availabilityLoadingDate === selectedDate && (
+                    <p className="font-sans text-xs mb-3" style={{ color: '#E8DDD4', opacity: 0.55 }}>
+                      Checking latest availability...
+                    </p>
+                  )}
+                  {availabilityError && (
+                    <p role="alert" className="font-sans text-sm mb-3" style={{ color: '#F4A5AE', opacity: 0.9 }}>
+                      {availabilityError}
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    {TIME_SLOTS.map((time) => {
+                      const blocked = isTimeBlocked(selectedDate, time);
+                      const disabled = blocked || availabilityLoadingDate === selectedDate;
+
+                      return (
+                        <button
+                          key={time}
+                          type="button"
+                          aria-label={`${time}${blocked ? ' unavailable' : ''}`}
+                          onClick={() => void handleTimeSelect(time)}
+                          disabled={disabled}
+                          className="font-sans text-sm py-3 px-4 border transition-all duration-300 disabled:hover:border-[#1A1A1A]"
+                          style={{
+                            color: blocked ? '#E8DDD440' : '#E8DDD4',
+                            borderColor: blocked ? '#1A1A1A' : '#2A2A2A',
+                            backgroundColor: blocked ? 'rgba(232, 221, 212, 0.04)' : 'transparent',
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                            textDecoration: blocked ? 'line-through' : 'none',
+                          }}
+                          data-cursor-hover={!disabled}
+                        >
+                          {time}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
               )}
 
               <button

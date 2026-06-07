@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Upload, X } from 'lucide-react';
 import DateTimePicker from '../components/DateTimePicker';
+import { bookingTimeOverlapsUnavailableSlot, getUnavailableBookingSlots } from '@/lib/bookingAvailability';
 import { submitBookingInquiry } from '@/lib/inquiries';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 import { REFERENCE_IMAGE_ACCEPT, getReferenceImageValidationError, uploadReferenceImages } from '@/lib/uploads';
@@ -139,6 +140,13 @@ export default function VelvetContact() {
 
     setIsSubmitting(true);
     try {
+      for (const selection of dateSelections) {
+        const unavailableSlots = await getUnavailableBookingSlots(selection.date);
+        if (bookingTimeOverlapsUnavailableSlot(selection.time, unavailableSlots)) {
+          throw new Error(`${selection.label} is no longer available. Please choose another time.`);
+        }
+      }
+
       const uploaded = await uploadReferenceImages(files);
       const [primarySelection] = dateSelections;
       const preferredSelections = formatPreferredSelections(dateSelections);

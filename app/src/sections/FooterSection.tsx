@@ -71,6 +71,7 @@ export default function FooterSection() {
             {[
               { label: 'Email', href: 'mailto:hello@gastoncollective.com' },
               { label: 'Contact', href: '/written-word#contact' },
+              { label: 'Events', href: '/events' },
             ].map((link) => (
               <a
                 key={link.label}

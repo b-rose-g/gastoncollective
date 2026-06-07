@@ -104,6 +104,7 @@ type CalendarEvent = {
   external_link: string | null;
   status: string | null;
   is_public: boolean | null;
+  blocks_booking: boolean | null;
   notes: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -155,6 +156,7 @@ type CalendarEventFormValues = {
   external_link: string;
   status: string;
   is_public: boolean;
+  blocks_booking: boolean;
   notes: string;
   updateInquiryStatus?: boolean;
   sourceKind?: 'booking' | 'commission';
@@ -205,6 +207,17 @@ const calendarEventTypes = [
 
 const publicEventTypeValues = new Set(['book_signing', 'poetry_night', 'popup_event', 'shop_drop']);
 
+const defaultBlocksBookingByEventType: Record<string, boolean> = {
+  tattoo_appointment: true,
+  commission_work: false,
+  book_signing: true,
+  poetry_night: true,
+  popup_event: true,
+  shop_drop: false,
+  blocked_time: true,
+  other: false,
+};
+
 const calendarStatusOptions = [
   { value: 'scheduled', label: 'Scheduled' },
   { value: 'confirmed', label: 'Confirmed' },
@@ -233,8 +246,13 @@ const emptyCalendarEventForm: CalendarEventFormValues = {
   external_link: '',
   status: 'scheduled',
   is_public: false,
+  blocks_booking: true,
   notes: '',
 };
+
+function defaultBlocksBookingForEventType(eventType: string) {
+  return defaultBlocksBookingByEventType[eventType] ?? false;
+}
 
 function newCalendarEventFormValues(overrides: Partial<CalendarEventFormValues> = {}): CalendarEventFormValues {
   const eventType = overrides.event_type ?? emptyCalendarEventForm.event_type;
@@ -247,6 +265,7 @@ function newCalendarEventFormValues(overrides: Partial<CalendarEventFormValues> 
     event_type: eventType,
     status: overrides.status ?? 'scheduled',
     is_public: publicFriendly ? (overrides.is_public ?? true) : false,
+    blocks_booking: overrides.blocks_booking ?? defaultBlocksBookingForEventType(eventType),
   };
 }
 
@@ -381,6 +400,7 @@ function calendarPayloadFromForm(values: CalendarEventFormValues) {
     external_link: cleanOptional(values.external_link),
     status: values.status || 'scheduled',
     is_public: canBePublic ? values.is_public : false,
+    blocks_booking: values.blocks_booking,
     notes: cleanOptional(values.notes),
   };
 }
@@ -404,6 +424,7 @@ function calendarEventToFormValues(event: CalendarEvent): CalendarEventFormValue
     external_link: event.external_link ?? '',
     status: event.status ?? 'scheduled',
     is_public: publicEventTypeValues.has(event.event_type) ? Boolean(event.is_public) : false,
+    blocks_booking: event.blocks_booking ?? defaultBlocksBookingForEventType(event.event_type),
     notes: event.notes ?? '',
   };
 }
@@ -888,6 +909,7 @@ function bookingCalendarDraft(booking: BookingInquiry): CalendarEventFormValues 
     start_time: booking.preferred_time ?? '',
     status: 'scheduled',
     is_public: false,
+    blocks_booking: true,
     notes,
     updateInquiryStatus: true,
     sourceKind: 'booking',
@@ -916,6 +938,7 @@ function commissionCalendarDraft(commission: CommissionInquiry): CalendarEventFo
     client_phone: commission.phone ?? '',
     status: 'scheduled',
     is_public: false,
+    blocks_booking: false,
     notes,
     updateInquiryStatus: true,
     sourceKind: 'commission',
@@ -1582,6 +1605,7 @@ function CalendarEventForm({
           ...current,
           event_type: value,
           is_public: nextPublicFriendly ? (wasPublicFriendly ? current.is_public : true) : false,
+          blocks_booking: defaultBlocksBookingForEventType(value),
         };
       }
 
@@ -1760,7 +1784,19 @@ function CalendarEventForm({
           />
           Multi-day event
         </label>
+        <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+          <input
+            type="checkbox"
+            checked={values.blocks_booking}
+            onChange={(event) => updateValue('blocks_booking', event.target.checked)}
+          />
+          Block booking during this event?
+        </label>
       </div>
+
+      <p className="font-sans text-xs mt-2" style={{ color: '#E8DDD4', opacity: 0.52, lineHeight: 1.5 }}>
+        Turn this on when the event uses time that should not be offered on the tattoo booking form.
+      </p>
 
       {multiDay && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -2039,6 +2075,12 @@ function CalendarEventCard({ event, onEdit }: { event: CalendarEvent; onEdit: (e
               style={{ color: event.is_public ? '#6B8F71' : '#C4A265', border: `1px solid ${event.is_public ? '#6B8F71' : '#C4A265'}`, borderRadius: 4, letterSpacing: '0.08em' }}
             >
               {event.is_public ? 'Public' : 'Private'}
+            </span>
+            <span
+              className="font-sans text-xs uppercase px-2.5 py-1"
+              style={{ color: event.blocks_booking ? '#D14A6E' : '#E8DDD4', border: `1px solid ${event.blocks_booking ? '#D14A6E' : '#2A2A2A'}`, borderRadius: 4, letterSpacing: '0.08em' }}
+            >
+              {event.blocks_booking ? 'Blocks booking' : 'Booking open'}
             </span>
           </div>
           <h3 className="font-serif text-lg" style={{ color: '#E8DDD4', fontWeight: 600 }}>

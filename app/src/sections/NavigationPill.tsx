@@ -29,6 +29,7 @@ export default function NavigationPill() {
           { label: 'Home', target: '#hero' },
           { label: 'About', target: '#about' },
           { label: 'Programs', target: '#programs' },
+          { label: 'Events', target: '#events' },
           { label: 'Shop', target: '#shop' },
         ].map((item) => (
           <button

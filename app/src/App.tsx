@@ -13,6 +13,7 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const VelvetInkPage = lazy(() => import('./pages/VelvetInkPage'));
 const WrittenWordPage = lazy(() => import('./pages/WrittenWordPage'));
 const ShopPage = lazy(() => import('./pages/ShopPage'));
+const EventsPage = lazy(() => import('./pages/EventsPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const LegalPage = lazy(() => import('./pages/LegalPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
@@ -58,6 +59,7 @@ function App() {
           <Route path="/velvet-ink" element={<VelvetInkPage />} />
           <Route path="/written-word" element={<WrittenWordPage />} />
           <Route path="/shop" element={<ShopPage />} />
+          <Route path="/events" element={<EventsPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/privacy" element={<LegalPage type="privacy" />} />
           <Route path="/terms" element={<LegalPage type="terms" />} />
