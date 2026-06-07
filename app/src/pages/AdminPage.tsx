@@ -42,6 +42,7 @@ type ContactMessage = {
   subject?: string | null;
   message: string | null;
   status: string | null;
+  admin_notes?: string | null;
   created_at: string | null;
 };
 
@@ -59,6 +60,7 @@ type BookingInquiry = {
   reference_links: string | null;
   message: string | null;
   status: string | null;
+  admin_notes?: string | null;
   created_at: string | null;
 };
 
@@ -74,6 +76,7 @@ type CommissionInquiry = {
   deadline: string | null;
   reference_links: string | null;
   status: string | null;
+  admin_notes?: string | null;
   created_at: string | null;
 };
 
@@ -85,6 +88,8 @@ type DashboardData = {
 
 type DashboardErrors = Partial<Record<keyof DashboardData, string>>;
 type AdminTab = 'overview' | 'messages' | 'bookings' | 'commissions';
+type SubmissionKind = keyof DashboardData;
+type FilterValue = 'all' | 'pending' | 'contacted' | 'approved' | 'archived';
 type ProfileStatus = 'idle' | 'loading' | 'authorized' | 'unauthorized' | 'error';
 
 type ReferenceLink = {
@@ -107,6 +112,31 @@ const emptyDashboardData: DashboardData = {
   bookings: [],
   commissions: [],
 };
+
+const messageStatusOptions = [
+  { value: 'new', label: 'New' },
+  { value: 'read', label: 'Read' },
+  { value: 'responded', label: 'Responded' },
+  { value: 'archived', label: 'Archived' },
+];
+
+const inquiryStatusOptions = [
+  { value: 'pending_review', label: 'Pending Review' },
+  { value: 'contacted', label: 'Contacted' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'denied', label: 'Denied' },
+  { value: 'scheduled', label: 'Scheduled' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'archived', label: 'Archived' },
+];
+
+const filterOptions = [
+  { value: 'all', label: 'Show all' },
+  { value: 'pending', label: 'New/pending only' },
+  { value: 'contacted', label: 'Contacted' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'archived', label: 'Archived' },
+] satisfies { value: FilterValue; label: string }[];
 
 function profileTextValue(profile: AdminProfile | null, keys: Array<keyof AdminProfile>) {
   for (const key of keys) {
@@ -168,7 +198,37 @@ function isNewMessage(message: ContactMessage) {
 }
 
 function isPending(status: string | null | undefined) {
-  return normalizeStatus(status) === 'pending';
+  return ['new', 'unread', 'pending', 'pending_review'].includes(normalizeStatus(status));
+}
+
+function statusLabel(value: string | null | undefined) {
+  const normalized = normalizeStatus(value);
+  if (!normalized) return '-';
+  return normalized
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function matchesFilter(status: string | null | undefined, filter: FilterValue) {
+  const normalized = normalizeStatus(status);
+
+  if (filter === 'all') return true;
+  if (filter === 'pending') return ['new', 'unread', 'pending', 'pending_review'].includes(normalized);
+  if (filter === 'contacted') return ['contacted', 'responded'].includes(normalized);
+  if (filter === 'approved') return normalized === 'approved';
+  return normalized === 'archived';
+}
+
+function editableStatusValue(status: string | null | undefined, options: { value: string }[]) {
+  const normalized = normalizeStatus(status);
+  const values = new Set(options.map((option) => option.value));
+
+  if (values.has(normalized)) return normalized;
+  if (normalized === 'unread' && values.has('new')) return 'new';
+  if (normalized === 'pending' && values.has('pending_review')) return 'pending_review';
+
+  return options[0]?.value ?? '';
 }
 
 function phoneHref(phone: string | null | undefined) {
@@ -319,9 +379,9 @@ function EmptyState({ children }: { children: ReactNode }) {
 function StatusBadge({ status }: { status: string | null | undefined }) {
   const normalized = normalizeStatus(status);
   const color =
-    normalized === 'unread' || normalized === 'new' || normalized === 'pending'
+    normalized === 'unread' || normalized === 'new' || normalized === 'pending' || normalized === 'pending_review'
       ? '#D14A6E'
-      : normalized === 'completed' || normalized === 'confirmed' || normalized === 'read'
+      : normalized === 'completed' || normalized === 'confirmed' || normalized === 'read' || normalized === 'approved'
         ? '#6B8F71'
         : '#C4A265';
 
@@ -330,7 +390,7 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
       className="inline-flex items-center font-sans text-xs uppercase px-2.5 py-1"
       style={{ color, border: `1px solid ${color}`, borderRadius: 4, letterSpacing: '0.08em' }}
     >
-      {displayValue(status).replace('_', ' ')}
+      {statusLabel(status)}
     </span>
   );
 }
@@ -343,6 +403,136 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       </p>
       <div className="font-sans text-sm break-words whitespace-pre-wrap" style={{ color: '#E8DDD4', lineHeight: 1.55 }}>
         {children || '-'}
+      </div>
+    </div>
+  );
+}
+
+function FilterControls({
+  value,
+  onChange,
+}: {
+  value: FilterValue;
+  onChange: (value: FilterValue) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2 mb-5">
+      {filterOptions.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className="font-sans text-xs uppercase px-3 py-2 transition-all duration-300"
+          style={{
+            color: value === option.value ? '#0A0A0A' : '#E8DDD4',
+            backgroundColor: value === option.value ? '#F4A5AE' : 'transparent',
+            border: `1px solid ${value === option.value ? '#F4A5AE' : '#2A2A2A'}`,
+            borderRadius: 6,
+            cursor: 'pointer',
+            letterSpacing: '0.08em',
+          }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AdminEditFields({
+  status,
+  adminNotes,
+  statusOptions,
+  onSave,
+}: {
+  status: string | null | undefined;
+  adminNotes: string | null | undefined;
+  statusOptions: { value: string; label: string }[];
+  onSave: (input: { status: string; adminNotes: string }) => Promise<void>;
+}) {
+  const selectedStatusValue = editableStatusValue(status, statusOptions);
+  const [selectedStatus, setSelectedStatus] = useState(selectedStatusValue);
+  const [notes, setNotes] = useState(adminNotes ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState('');
+
+  useEffect(() => {
+    setSelectedStatus(selectedStatusValue);
+    setNotes(adminNotes ?? '');
+  }, [adminNotes, selectedStatusValue]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError('');
+    setSaveSuccess('');
+
+    try {
+      await onSave({ status: selectedStatus, adminNotes: notes });
+      setSaveSuccess('Saved.');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save changes.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-6 pt-5" style={{ borderTop: '1px solid #1A1A1A' }}>
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(180px,240px)_1fr] gap-4">
+        <div>
+          <label className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.62, letterSpacing: '0.1em' }}>
+            Status
+          </label>
+          <select
+            value={selectedStatus}
+            onChange={(event) => setSelectedStatus(event.target.value)}
+            className="w-full font-sans text-sm px-3 py-3 outline-none"
+            style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+          >
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.62, letterSpacing: '0.1em' }}>
+            Admin notes
+          </label>
+          <textarea
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            rows={3}
+            className="w-full font-sans text-sm px-3 py-3 resize-y outline-none"
+            placeholder="Add a private note..."
+            style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6, lineHeight: 1.55 }}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 mt-4">
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="font-sans text-xs uppercase px-4 py-2.5 flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
+          style={{
+            color: '#0A0A0A',
+            backgroundColor: '#F4A5AE',
+            border: '1px solid #F4A5AE',
+            borderRadius: 6,
+            cursor: saving ? 'wait' : 'pointer',
+            letterSpacing: '0.1em',
+          }}
+        >
+          {saving ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
+          {saving ? 'Saving' : 'Save'}
+        </button>
+        {saveSuccess && <StatusMessage tone="success">{saveSuccess}</StatusMessage>}
+        {saveError && <StatusMessage tone="error">{saveError}</StatusMessage>}
       </div>
     </div>
   );
@@ -703,14 +893,30 @@ function OverviewSection({ data, loading, errors }: { data: DashboardData; loadi
   );
 }
 
-function MessagesSection({ messages, loading, error }: { messages: ContactMessage[]; loading: boolean; error?: string }) {
+function MessagesSection({
+  messages,
+  loading,
+  error,
+  onSave,
+}: {
+  messages: ContactMessage[];
+  loading: boolean;
+  error?: string;
+  onSave: (id: number | string, input: { status: string; adminNotes: string }) => Promise<void>;
+}) {
+  const [filter, setFilter] = useState<FilterValue>('all');
+  const filteredMessages = messages.filter((message) => matchesFilter(message.status, filter));
+
   if (loading) return <InlineLoading label="Loading contact messages" />;
   if (error) return <ErrorPanel message={error} />;
   if (messages.length === 0) return <EmptyState>No messages yet.</EmptyState>;
 
   return (
-    <div className="space-y-4">
-      {messages.map((message) => (
+    <div>
+      <FilterControls value={filter} onChange={setFilter} />
+      {filteredMessages.length === 0 && <EmptyState>No messages match this filter.</EmptyState>}
+      <div className="space-y-4">
+      {filteredMessages.map((message) => (
         <article key={message.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
             <div className="min-w-0">
@@ -731,20 +937,43 @@ function MessagesSection({ messages, loading, error }: { messages: ContactMessag
             {message.subject && <Field label="Subject">{message.subject}</Field>}
             <Field label="Message">{displayValue(message.message)}</Field>
           </div>
+          <AdminEditFields
+            status={message.status}
+            adminNotes={message.admin_notes}
+            statusOptions={messageStatusOptions}
+            onSave={(input) => onSave(message.id, input)}
+          />
         </article>
       ))}
+      </div>
     </div>
   );
 }
 
-function BookingSection({ bookings, loading, error }: { bookings: BookingInquiry[]; loading: boolean; error?: string }) {
+function BookingSection({
+  bookings,
+  loading,
+  error,
+  onSave,
+}: {
+  bookings: BookingInquiry[];
+  loading: boolean;
+  error?: string;
+  onSave: (id: number | string, input: { status: string; adminNotes: string }) => Promise<void>;
+}) {
+  const [filter, setFilter] = useState<FilterValue>('all');
+  const filteredBookings = bookings.filter((booking) => matchesFilter(booking.status, filter));
+
   if (loading) return <InlineLoading label="Loading tattoo booking inquiries" />;
   if (error) return <ErrorPanel message={error} />;
   if (bookings.length === 0) return <EmptyState>No tattoo booking inquiries yet.</EmptyState>;
 
   return (
-    <div className="space-y-4">
-      {bookings.map((booking) => (
+    <div>
+      <FilterControls value={filter} onChange={setFilter} />
+      {filteredBookings.length === 0 && <EmptyState>No tattoo booking inquiries match this filter.</EmptyState>}
+      <div className="space-y-4">
+      {filteredBookings.map((booking) => (
         <article key={booking.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
             <div className="min-w-0">
@@ -773,8 +1002,15 @@ function BookingSection({ bookings, loading, error }: { bookings: BookingInquiry
               <ReferenceLinks value={booking.reference_links} />
             </Field>
           </div>
+          <AdminEditFields
+            status={booking.status}
+            adminNotes={booking.admin_notes}
+            statusOptions={inquiryStatusOptions}
+            onSave={(input) => onSave(booking.id, input)}
+          />
         </article>
       ))}
+      </div>
     </div>
   );
 }
@@ -783,18 +1019,26 @@ function CommissionsSection({
   commissions,
   loading,
   error,
+  onSave,
 }: {
   commissions: CommissionInquiry[];
   loading: boolean;
   error?: string;
+  onSave: (id: number | string, input: { status: string; adminNotes: string }) => Promise<void>;
 }) {
+  const [filter, setFilter] = useState<FilterValue>('all');
+  const filteredCommissions = commissions.filter((commission) => matchesFilter(commission.status, filter));
+
   if (loading) return <InlineLoading label="Loading commission requests" />;
   if (error) return <ErrorPanel message={error} />;
   if (commissions.length === 0) return <EmptyState>No commission requests yet.</EmptyState>;
 
   return (
-    <div className="space-y-4">
-      {commissions.map((commission) => (
+    <div>
+      <FilterControls value={filter} onChange={setFilter} />
+      {filteredCommissions.length === 0 && <EmptyState>No commission requests match this filter.</EmptyState>}
+      <div className="space-y-4">
+      {filteredCommissions.map((commission) => (
         <article key={commission.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
             <div className="min-w-0">
@@ -821,8 +1065,15 @@ function CommissionsSection({
               <ReferenceLinks value={commission.reference_links} />
             </Field>
           </div>
+          <AdminEditFields
+            status={commission.status}
+            adminNotes={commission.admin_notes}
+            statusOptions={inquiryStatusOptions}
+            onSave={(input) => onSave(commission.id, input)}
+          />
         </article>
       ))}
+      </div>
     </div>
   );
 }
@@ -889,6 +1140,40 @@ function AdminPortal({
   useEffect(() => {
     void loadDashboardData();
   }, [loadDashboardData]);
+
+  const updateSubmission = useCallback(
+    async (kind: SubmissionKind, id: number | string, input: { status: string; adminNotes: string }) => {
+      const tableByKind: Record<SubmissionKind, string> = {
+        messages: 'contact_messages',
+        bookings: 'booking_inquiries',
+        commissions: 'commission_inquiries',
+      };
+
+      const { data, error } = await supabase
+        .from(tableByKind[kind])
+        .update({
+          status: input.status,
+          admin_notes: input.adminNotes.trim() || null,
+        })
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (error) {
+        throw new Error(error.message || 'Could not save changes.');
+      }
+
+      if (!data) {
+        throw new Error('Could not save changes for this submission.');
+      }
+
+      setDashboardData((current) => ({
+        ...current,
+        [kind]: current[kind].map((item) => (item.id === id ? data : item)),
+      }) as DashboardData);
+    },
+    [],
+  );
 
   const tabs = [
     {
@@ -1040,13 +1325,28 @@ function AdminPortal({
                 <OverviewSection data={dashboardData} loading={dashboardLoading} errors={dashboardErrors} />
               )}
               {activeTab === 'messages' && (
-                <MessagesSection messages={dashboardData.messages} loading={dashboardLoading} error={dashboardErrors.messages} />
+                <MessagesSection
+                  messages={dashboardData.messages}
+                  loading={dashboardLoading}
+                  error={dashboardErrors.messages}
+                  onSave={(id, input) => updateSubmission('messages', id, input)}
+                />
               )}
               {activeTab === 'bookings' && (
-                <BookingSection bookings={dashboardData.bookings} loading={dashboardLoading} error={dashboardErrors.bookings} />
+                <BookingSection
+                  bookings={dashboardData.bookings}
+                  loading={dashboardLoading}
+                  error={dashboardErrors.bookings}
+                  onSave={(id, input) => updateSubmission('bookings', id, input)}
+                />
               )}
               {activeTab === 'commissions' && (
-                <CommissionsSection commissions={dashboardData.commissions} loading={dashboardLoading} error={dashboardErrors.commissions} />
+                <CommissionsSection
+                  commissions={dashboardData.commissions}
+                  loading={dashboardLoading}
+                  error={dashboardErrors.commissions}
+                  onSave={(id, input) => updateSubmission('commissions', id, input)}
+                />
               )}
             </div>
           </div>
