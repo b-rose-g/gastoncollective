@@ -66,12 +66,242 @@ export type UploadedGalleryImage = {
   path: string;
 };
 
+export type LegacyVelvetInkImage = GalleryItemInput & {
+  legacy_key: string;
+  source_label: 'Legacy';
+  public_category: 'tattoo' | 'piercing';
+  width: number;
+  height: number;
+  previewCrop?: {
+    aspectRatio: string;
+    scale: number;
+    origin: string;
+  };
+};
+
+export type LegacyGalleryImportResult = {
+  created: GalleryItem[];
+  skipped: number;
+};
+
 type GetGalleryItemsOptions = {
   activeOnly?: boolean;
   limit?: number;
 };
 
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+export const LEGACY_VELVET_INK_IMAGES: LegacyVelvetInkImage[] = [
+  {
+    legacy_key: 'velvet-ink-tattoo-1',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_1.jpg',
+    image_path: 'images/tattoo_1.jpg',
+    title: 'Piece #1',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 10,
+    alt_text: 'Velvet Ink tattoo portfolio piece 1',
+    width: 556,
+    height: 660,
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-2',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_2.jpg',
+    image_path: 'images/tattoo_2.jpg',
+    title: 'Piece #2',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 20,
+    alt_text: 'Velvet Ink tattoo portfolio piece 2',
+    width: 780,
+    height: 1210,
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-3',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_3.jpg',
+    image_path: 'images/tattoo_3.jpg',
+    title: 'Piece #3',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 30,
+    alt_text: 'Velvet Ink tattoo portfolio piece 3',
+    width: 1080,
+    height: 1440,
+    previewCrop: {
+      aspectRatio: '3 / 4',
+      scale: 1.75,
+      origin: '58% 66%',
+    },
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-4',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_4.jpg',
+    image_path: 'images/tattoo_4.jpg',
+    title: 'Piece #4',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 40,
+    alt_text: 'Velvet Ink tattoo portfolio piece 4',
+    width: 957,
+    height: 1643,
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-5',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_5.jpg',
+    image_path: 'images/tattoo_5.jpg',
+    title: 'Piece #5',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 50,
+    alt_text: 'Velvet Ink tattoo portfolio piece 5',
+    width: 529,
+    height: 1197,
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-6',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_6.jpg',
+    image_path: 'images/tattoo_6.jpg',
+    title: 'Piece #6',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 60,
+    alt_text: 'Velvet Ink tattoo portfolio piece 6',
+    width: 670,
+    height: 1126,
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-7',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_7.jpg',
+    image_path: 'images/tattoo_7.jpg',
+    title: 'Piece #7',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 70,
+    alt_text: 'Velvet Ink tattoo portfolio piece 7',
+    width: 366,
+    height: 628,
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-8',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_8.jpg',
+    image_path: 'images/tattoo_8.jpg',
+    title: 'Piece #8',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 80,
+    alt_text: 'Velvet Ink tattoo portfolio piece 8',
+    width: 471,
+    height: 938,
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-9',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_9.jpg',
+    image_path: 'images/tattoo_9.jpg',
+    title: 'Piece #9',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 90,
+    alt_text: 'Velvet Ink tattoo portfolio piece 9',
+    width: 277,
+    height: 774,
+  },
+  {
+    legacy_key: 'velvet-ink-tattoo-10',
+    source_label: 'Legacy',
+    public_category: 'tattoo',
+    image_url: '/images/tattoo_10.jpg',
+    image_path: 'images/tattoo_10.jpg',
+    title: 'Piece #10',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 100,
+    alt_text: 'Velvet Ink tattoo portfolio piece 10',
+    width: 659,
+    height: 623,
+  },
+  {
+    legacy_key: 'velvet-ink-piercing-1',
+    source_label: 'Legacy',
+    public_category: 'piercing',
+    image_url: '/images/piercing_1.jpg',
+    image_path: 'images/piercing_1.jpg',
+    title: 'Piece #11',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 110,
+    alt_text: 'Velvet Ink piercing portfolio piece 1',
+    width: 1206,
+    height: 2208,
+  },
+  {
+    legacy_key: 'velvet-ink-piercing-2',
+    source_label: 'Legacy',
+    public_category: 'piercing',
+    image_url: '/images/piercing_2.jpg',
+    image_path: 'images/piercing_2.jpg',
+    title: 'Piece #12',
+    description: 'Imported from the original Velvet Ink public gallery.',
+    category: 'tattoo_gallery',
+    display_location: 'velvet_ink',
+    is_active: true,
+    is_featured: false,
+    display_order: 120,
+    alt_text: 'Velvet Ink piercing portfolio piece 2',
+    width: 1242,
+    height: 2208,
+  },
+];
 
 const galleryColumns = [
   'id',
@@ -189,11 +419,58 @@ export async function updateGalleryItem(id: number | string, input: GalleryItemU
   return data as unknown as GalleryItem;
 }
 
+export async function importLegacyVelvetInkGalleryItems(): Promise<LegacyGalleryImportResult> {
+  const existingItems = await getGalleryItems({ activeOnly: false });
+  const existingKeys = new Set(existingItems.flatMap((item) => galleryIdentityKeys(item)));
+  const payloads = LEGACY_VELVET_INK_IMAGES.filter((image) => {
+    const keys = galleryIdentityKeys(image);
+    return keys.length > 0 && keys.every((key) => !existingKeys.has(key));
+  });
+
+  if (payloads.length === 0) {
+    return { created: [], skipped: LEGACY_VELVET_INK_IMAGES.length };
+  }
+
+  const { data, error } = await supabase
+    .from('gallery_items')
+    .insert(payloads.map((image) => cleanGalleryPayload(image)))
+    .select(galleryColumns);
+
+  if (error) {
+    throw new Error(error.message || 'Existing Velvet Ink images could not be imported.');
+  }
+
+  const created = (data ?? []) as unknown as GalleryItem[];
+  return {
+    created,
+    skipped: LEGACY_VELVET_INK_IMAGES.length - created.length,
+  };
+}
+
+export function getLegacyVelvetInkImageForItem(item: Pick<GalleryItem, 'image_url' | 'image_path'>) {
+  const itemKeys = new Set(galleryIdentityKeys(item));
+  return LEGACY_VELVET_INK_IMAGES.find((image) => galleryIdentityKeys(image).some((key) => itemKeys.has(key))) ?? null;
+}
+
+export function isLegacyVelvetInkGalleryItem(item: Pick<GalleryItem, 'image_url' | 'image_path'>) {
+  return Boolean(getLegacyVelvetInkImageForItem(item));
+}
+
+export function galleryItemSourceLabel(item: Pick<GalleryItem, 'image_url' | 'image_path'>) {
+  if (isLegacyVelvetInkGalleryItem(item)) return 'Legacy';
+
+  const imageUrl = normalizeGalleryIdentity(item.image_url);
+  const imagePath = normalizeGalleryIdentity(item.image_path);
+  if (imageUrl.startsWith('images/') || imagePath.startsWith('images/')) return 'Static';
+
+  return 'Uploaded';
+}
+
 function galleryItemMatchesLocation(item: GalleryItem, location: GalleryDisplayLocation) {
   if (item.display_location === location) return true;
 
   if (location === 'homepage') return item.category === 'homepage' || item.is_featured === true;
-  if (location === 'velvet_ink') return item.category === 'velvet_ink' || item.category === 'tattoo_gallery';
+  if (location === 'velvet_ink') return ['velvet_ink', 'tattoo_gallery', 'flash_art'].includes(String(item.category));
   if (location === 'shop') return ['shop', 'stickers', 'bookmarks', 'commissions'].includes(String(item.category));
   if (location === 'written_word') return item.category === 'written_word';
   if (location === 'events') return item.category === 'events';
@@ -220,6 +497,25 @@ function cleanGalleryPayload(input: GalleryItemUpdate) {
 function cleanOptional(value: string | null | undefined) {
   const trimmed = value?.trim() ?? '';
   return trimmed || null;
+}
+
+function galleryIdentityKeys(item: Pick<GalleryItem, 'image_url' | 'image_path'>) {
+  return [normalizeGalleryIdentity(item.image_url), normalizeGalleryIdentity(item.image_path)].filter(Boolean);
+}
+
+function normalizeGalleryIdentity(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return '';
+
+  try {
+    if (/^https?:\/\//i.test(trimmed)) {
+      return new URL(trimmed).pathname.replace(/^\/+/, '').toLowerCase();
+    }
+  } catch {
+    return trimmed.replace(/^\/+/, '').toLowerCase();
+  }
+
+  return trimmed.replace(/^\/+/, '').toLowerCase();
 }
 
 function uniqueGalleryStoragePath(file: File) {

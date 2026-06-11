@@ -7,6 +7,7 @@ import ShopProducts from '../shop/sections/ShopProducts';
 import ShopCommission from '../shop/sections/ShopCommission';
 import ShopContact from '../shop/sections/ShopContact';
 import ShopFooter from '../shop/sections/ShopFooter';
+import SiteContentBand from '../sections/SiteContentBand';
 import { prefersReducedMotion } from '@/lib/motion';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
 
@@ -23,6 +24,7 @@ export default function ShopPage() {
     <div className="shop-page">
       <ShopNav />
       <main>
+        <SiteContentBand location="shop" limit={3} tone="shop" topPlacement />
         <ShopHero />
         <ShopProducts />
         <ShopCommission />

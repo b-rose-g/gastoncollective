@@ -47,6 +47,12 @@ export const routeMetadata = {
     path: "/admin",
     image: "/images/tattoo_2.jpg",
   },
+  underDevelopment: {
+    title: "Coming Soon | The Gaston Collective",
+    description: "The Gaston Collective website is temporarily under development while updates are finished.",
+    path: "/",
+    image: "/images/tattoo_2.jpg",
+  },
   privacy: {
     title: "Privacy Policy | The Gaston Collective",
     description: "How The Gaston Collective collects, uses, and protects inquiry, booking, commission, and website information.",

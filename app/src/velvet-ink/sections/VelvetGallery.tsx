@@ -3,7 +3,13 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { X } from 'lucide-react';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
-import { getGalleryItemsByLocation, type GalleryItem } from '@/lib/gallery';
+import {
+  LEGACY_VELVET_INK_IMAGES,
+  getGalleryItemsByLocation,
+  getLegacyVelvetInkImageForItem,
+  isLegacyVelvetInkGalleryItem,
+  type GalleryItem,
+} from '@/lib/gallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -21,36 +27,15 @@ type GalleryImage = {
   };
 };
 
-const TATTOO_IMAGES: GalleryImage[] = [
-  { src: '/images/tattoo_1.jpg', title: 'Piece #1', category: 'tattoo', width: 556, height: 660 },
-  { src: '/images/tattoo_2.jpg', title: 'Piece #2', category: 'tattoo', width: 780, height: 1210 },
-  {
-    src: '/images/tattoo_3.jpg',
-    title: 'Piece #3',
-    category: 'tattoo',
-    width: 1080,
-    height: 1440,
-    previewCrop: {
-      aspectRatio: '3 / 4',
-      scale: 1.75,
-      origin: '58% 66%',
-    },
-  },
-  { src: '/images/tattoo_4.jpg', title: 'Piece #4', category: 'tattoo', width: 957, height: 1643 },
-  { src: '/images/tattoo_5.jpg', title: 'Piece #5', category: 'tattoo', width: 529, height: 1197 },
-  { src: '/images/tattoo_6.jpg', title: 'Piece #6', category: 'tattoo', width: 670, height: 1126 },
-  { src: '/images/tattoo_7.jpg', title: 'Piece #7', category: 'tattoo', width: 366, height: 628 },
-  { src: '/images/tattoo_8.jpg', title: 'Piece #8', category: 'tattoo', width: 471, height: 938 },
-  { src: '/images/tattoo_9.jpg', title: 'Piece #9', category: 'tattoo', width: 277, height: 774 },
-  { src: '/images/tattoo_10.jpg', title: 'Piece #10', category: 'tattoo', width: 659, height: 623 },
-];
-
-const PIERCING_IMAGES: GalleryImage[] = [
-  { src: '/images/piercing_1.jpg', title: 'Piece #11', category: 'piercing', width: 1206, height: 2208 },
-  { src: '/images/piercing_2.jpg', title: 'Piece #12', category: 'piercing', width: 1242, height: 2208 },
-];
-
-const ALL_IMAGES = [...TATTOO_IMAGES, ...PIERCING_IMAGES];
+const STATIC_FALLBACK_IMAGES: GalleryImage[] = LEGACY_VELVET_INK_IMAGES.map((image) => ({
+  src: image.image_url,
+  title: image.title,
+  alt: image.alt_text ?? image.title,
+  category: image.public_category,
+  width: image.width,
+  height: image.height,
+  previewCrop: image.previewCrop,
+}));
 
 export default function VelvetGallery() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -61,18 +46,30 @@ export default function VelvetGallery() {
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
 
   const galleryImages = useMemo<GalleryImage[]>(() => {
-    if (galleryItems.length === 0) return ALL_IMAGES;
-
-    return galleryItems
+    const managedImages: GalleryImage[] = galleryItems
       .filter((item) => item.image_url)
-      .map((item) => ({
-        src: item.image_url || '',
-        title: item.title || 'Gallery piece',
-        alt: item.alt_text || item.title || 'Velvet Ink gallery image',
-        category: 'tattoo',
-        width: 900,
-        height: 1200,
-      }));
+      .map((item) => {
+        const legacyImage = getLegacyVelvetInkImageForItem(item);
+
+        return {
+          src: item.image_url || '',
+          title: item.title || legacyImage?.title || 'Gallery piece',
+          alt: item.alt_text || item.title || legacyImage?.alt_text || 'Velvet Ink gallery image',
+          category: legacyImage?.public_category ?? 'tattoo',
+          width: legacyImage?.width ?? 900,
+          height: legacyImage?.height ?? 1200,
+          previewCrop: legacyImage?.previewCrop,
+        };
+      });
+
+    const hasImportedLegacyImages = galleryItems.some((item) => isLegacyVelvetInkGalleryItem(item));
+    const sourceImages = hasImportedLegacyImages ? managedImages : [...STATIC_FALLBACK_IMAGES, ...managedImages];
+    const seen = new Set<string>();
+    return sourceImages.filter((image) => {
+      if (seen.has(image.src)) return false;
+      seen.add(image.src);
+      return true;
+    });
   }, [galleryItems]);
 
   const filteredImages = filter === 'all' ? galleryImages : galleryImages.filter((img) => img.category === filter);

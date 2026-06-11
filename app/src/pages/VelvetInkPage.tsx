@@ -7,6 +7,7 @@ import VelvetAbout from '../velvet-ink/sections/VelvetAbout';
 import VelvetGallery from '../velvet-ink/sections/VelvetGallery';
 import VelvetContact from '../velvet-ink/sections/VelvetContact';
 import VelvetFooter from '../velvet-ink/sections/VelvetFooter';
+import SiteContentBand from '../sections/SiteContentBand';
 import { prefersReducedMotion } from '@/lib/motion';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
 
@@ -23,6 +24,7 @@ export default function VelvetInkPage() {
     <div className="velvet-ink-page">
       <VelvetNav />
       <main>
+        <SiteContentBand location="velvet_ink" limit={3} tone="dark" topPlacement />
         <VelvetHero />
         <VelvetAbout />
         <VelvetGallery />

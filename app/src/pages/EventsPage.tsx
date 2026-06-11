@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, CalendarDays, ExternalLink, Loader2, MapPin, RefreshCw } from 'lucide-react';
 import FooterSection from '@/sections/FooterSection';
+import SiteContentBand from '@/sections/SiteContentBand';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
 import {
   dateKey,
@@ -60,6 +61,8 @@ export default function EventsPage() {
           </div>
         </div>
       </header>
+
+      <SiteContentBand location="events" limit={3} tone="light" topPlacement />
 
       <section className="px-6 md:px-12 pt-10 pb-20">
         <div className="max-w-[1180px] mx-auto">

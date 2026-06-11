@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CheckCircle2,
   Clock,
+  Crop,
   Edit3,
   ExternalLink,
   Image as ImageIcon,
@@ -17,14 +18,20 @@ import {
   LogIn,
   LogOut,
   Mail,
+  Menu,
+  Megaphone,
   MessageSquareText,
   Palette,
   Phone,
   Plus,
   RefreshCw,
+  RotateCcw,
+  RotateCw,
+  Save,
   ShieldCheck,
   Upload,
   UserRound,
+  ZoomIn,
   X,
 } from 'lucide-react';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
@@ -34,9 +41,11 @@ import {
   GALLERY_CATEGORIES,
   GALLERY_DISPLAY_LOCATIONS,
   GALLERY_IMAGE_ACCEPT,
+  galleryItemSourceLabel,
   galleryLabel,
   getGalleryImageValidationError,
   getGalleryItems,
+  importLegacyVelvetInkGalleryItems,
   updateGalleryItem,
   uploadGalleryImage,
   type GalleryCategory,
@@ -44,7 +53,23 @@ import {
   type GalleryItem,
   type GalleryItemInput,
   type GalleryItemUpdate,
+  type LegacyGalleryImportResult,
 } from '@/lib/gallery';
+import {
+  createSiteContent,
+  getSiteContent,
+  SITE_CONTENT_DISPLAY_LOCATIONS,
+  SITE_CONTENT_TYPES,
+  setUnderDevelopmentMode,
+  siteContentLabel,
+  updateSiteContent,
+  UNDER_DEVELOPMENT_CONTENT_KEY,
+  type SiteContentDisplayLocation,
+  type SiteContentInput,
+  type SiteContentItem,
+  type SiteContentType,
+  type SiteContentUpdate,
+} from '@/lib/siteContent';
 
 type AdminProfile = {
   id: string;
@@ -135,7 +160,7 @@ type DashboardData = {
 };
 
 type DashboardErrors = Partial<Record<keyof DashboardData, string>>;
-type AdminTab = 'overview' | 'messages' | 'bookings' | 'commissions' | 'calendar' | 'gallery';
+type AdminTab = 'overview' | 'messages' | 'bookings' | 'commissions' | 'calendar' | 'gallery' | 'content';
 type SubmissionKind = keyof DashboardData;
 type FilterValue = 'all' | 'pending' | 'contacted' | 'approved' | 'archived';
 type CalendarVisibilityFilter = 'all' | 'public' | 'private';
@@ -192,6 +217,32 @@ type GalleryFormValues = {
   display_order: string;
 };
 
+type GalleryImageTransformValues = {
+  zoom: number;
+  rotate: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+type SiteContentFormValues = {
+  content_key: string;
+  section: string;
+  title: string;
+  subtitle: string;
+  body: string;
+  image_url: string;
+  image_path: string;
+  button_label: string;
+  button_url: string;
+  display_location: SiteContentDisplayLocation;
+  content_type: SiteContentType;
+  is_active: boolean;
+  is_featured: boolean;
+  display_order: string;
+  starts_at: string;
+  ends_at: string;
+};
+
 const emptyDashboardData: DashboardData = {
   messages: [],
   bookings: [],
@@ -208,6 +259,82 @@ const emptyGalleryFormValues: GalleryFormValues = {
   is_featured: false,
   display_order: '0',
 };
+
+const defaultGalleryImageTransformValues: GalleryImageTransformValues = {
+  zoom: 1,
+  rotate: 0,
+  offsetX: 0,
+  offsetY: 0,
+};
+
+const emptySiteContentFormValues: SiteContentFormValues = {
+  content_key: '',
+  section: '',
+  title: '',
+  subtitle: '',
+  body: '',
+  image_url: '',
+  image_path: '',
+  button_label: '',
+  button_url: '',
+  display_location: 'homepage',
+  content_type: 'announcement',
+  is_active: true,
+  is_featured: false,
+  display_order: '0',
+  starts_at: '',
+  ends_at: '',
+};
+
+const ownerContentTemplates = [
+  {
+    label: 'Homepage announcement',
+    description: 'Post a general update on the Gaston Collective homepage.',
+    display_location: 'homepage',
+    content_type: 'announcement',
+    is_featured: true,
+    section: 'Homepage announcement',
+  },
+  {
+    label: 'Velvet Ink notice',
+    description: 'Share booking, flash, or studio updates on Velvet Ink.',
+    display_location: 'velvet_ink',
+    content_type: 'notice',
+    is_featured: false,
+    section: 'Velvet Ink notice',
+  },
+  {
+    label: 'Shop update',
+    description: 'Announce drops, stock updates, or commission availability.',
+    display_location: 'shop',
+    content_type: 'notice',
+    is_featured: false,
+    section: 'Shop update',
+  },
+  {
+    label: 'Written Word update',
+    description: 'Share book, author, signing, or writing updates.',
+    display_location: 'written_word',
+    content_type: 'announcement',
+    is_featured: false,
+    section: 'Written Word update',
+  },
+  {
+    label: 'Events notice',
+    description: 'Add a note to the public events calendar page.',
+    display_location: 'events',
+    content_type: 'notice',
+    is_featured: false,
+    section: 'Events notice',
+  },
+] satisfies Array<{
+  label: string;
+  description: string;
+  display_location: SiteContentDisplayLocation;
+  content_type: SiteContentType;
+  is_featured: boolean;
+  section: string;
+}>;
 
 const messageStatusOptions = [
   { value: 'new', label: 'New' },
@@ -475,6 +602,36 @@ function sortCalendarEvents(events: CalendarEvent[]) {
     const rightTime = toTimestamp(`${right.start_date}T${right.start_time || '00:00:00'}`);
     return leftTime - rightTime || left.title.localeCompare(right.title);
   });
+}
+
+function sortGalleryItems(items: GalleryItem[]) {
+  return [...items].sort((left, right) => {
+    const orderDifference = (left.display_order ?? 0) - (right.display_order ?? 0);
+    if (orderDifference !== 0) return orderDifference;
+
+    return toTimestamp(right.created_at) - toTimestamp(left.created_at);
+  });
+}
+
+function mergeGalleryItems(current: GalleryItem[], incoming: GalleryItem[]) {
+  const byId = new Map(current.map((item) => [String(item.id), item]));
+  incoming.forEach((item) => byId.set(String(item.id), item));
+  return sortGalleryItems([...byId.values()]);
+}
+
+function sortSiteContentItems(items: SiteContentItem[]) {
+  return [...items].sort((left, right) => {
+    const orderDifference = (left.display_order ?? 0) - (right.display_order ?? 0);
+    if (orderDifference !== 0) return orderDifference;
+
+    return toTimestamp(right.created_at) - toTimestamp(left.created_at);
+  });
+}
+
+function mergeSiteContentItems(current: SiteContentItem[], incoming: SiteContentItem[]) {
+  const byId = new Map(current.map((item) => [String(item.id), item]));
+  incoming.forEach((item) => byId.set(String(item.id), item));
+  return sortSiteContentItems([...byId.values()]);
 }
 
 function toTimestamp(value: string | null | undefined) {
@@ -1032,6 +1189,172 @@ function galleryUpdateFromForm(values: GalleryFormValues, image?: { url: string;
   };
 }
 
+function siteContentFormFromItem(item: SiteContentItem): SiteContentFormValues {
+  return {
+    content_key: item.content_key ?? '',
+    section: item.section ?? '',
+    title: item.title ?? '',
+    subtitle: item.subtitle ?? '',
+    body: item.body ?? '',
+    image_url: item.image_url ?? '',
+    image_path: item.image_path ?? '',
+    button_label: item.button_label ?? '',
+    button_url: item.button_url ?? '',
+    display_location: SITE_CONTENT_DISPLAY_LOCATIONS.includes(item.display_location as SiteContentDisplayLocation)
+      ? (item.display_location as SiteContentDisplayLocation)
+      : 'general',
+    content_type: SITE_CONTENT_TYPES.includes(item.content_type as SiteContentType) ? (item.content_type as SiteContentType) : 'general',
+    is_active: item.is_active === true,
+    is_featured: item.is_featured === true,
+    display_order: String(item.display_order ?? 0),
+    starts_at: dateTimeInputValue(item.starts_at),
+    ends_at: dateTimeInputValue(item.ends_at),
+  };
+}
+
+function siteContentInputFromForm(values: SiteContentFormValues): SiteContentInput {
+  const contentKey = values.content_key.trim() || generateSiteContentKey(values);
+
+  return {
+    content_key: contentKey,
+    section: values.section.trim() || defaultSiteContentSection(values),
+    title: values.title.trim() || null,
+    subtitle: values.subtitle.trim() || null,
+    body: values.body.trim() || null,
+    image_url: values.image_url.trim() || null,
+    image_path: values.image_path.trim() || null,
+    button_label: values.button_label.trim() || null,
+    button_url: values.button_url.trim() || null,
+    display_location: values.display_location,
+    content_type: values.content_type,
+    is_active: values.is_active,
+    is_featured: values.is_featured,
+    display_order: Number.parseInt(values.display_order, 10) || 0,
+    starts_at: dateTimeInputToIso(values.starts_at),
+    ends_at: dateTimeInputToIso(values.ends_at),
+  };
+}
+
+function siteContentUpdateFromForm(values: SiteContentFormValues): SiteContentUpdate {
+  return siteContentInputFromForm(values);
+}
+
+function defaultSiteContentSection(values: SiteContentFormValues) {
+  return ownerContentTemplates.find((template) => template.display_location === values.display_location)?.section
+    ?? siteContentLabel(values.display_location);
+}
+
+function generateSiteContentKey(values: SiteContentFormValues) {
+  const source = values.title || values.body || values.section || 'update';
+  const slug = source
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 42);
+
+  return `${values.display_location}-${values.content_type}-${slug || 'update'}-${Date.now().toString(36)}`;
+}
+
+function dateTimeInputValue(value: string | null | undefined) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return offsetDate.toISOString().slice(0, 16);
+}
+
+function dateTimeInputToIso(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const date = new Date(trimmed);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function galleryTransformHasChanges(values: GalleryImageTransformValues) {
+  return (
+    Math.abs(values.zoom - defaultGalleryImageTransformValues.zoom) > 0.001 ||
+    values.rotate !== defaultGalleryImageTransformValues.rotate ||
+    values.offsetX !== defaultGalleryImageTransformValues.offsetX ||
+    values.offsetY !== defaultGalleryImageTransformValues.offsetY
+  );
+}
+
+async function createTransformedGalleryImageFile(
+  imageUrl: string,
+  title: string,
+  transform: GalleryImageTransformValues,
+) {
+  const image = await loadEditableImage(imageUrl);
+  const maxOutputDimension = 1800;
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const outputScale = Math.min(1, maxOutputDimension / Math.max(sourceWidth, sourceHeight));
+  const outputWidth = Math.round(sourceWidth * outputScale);
+  const outputHeight = Math.round(sourceHeight * outputScale);
+  const canvas = document.createElement('canvas');
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Image editor could not start in this browser.');
+  }
+
+  const zoom = clampNumber(transform.zoom, 1, 3);
+  const rotate = clampNumber(transform.rotate, -180, 180);
+  const offsetX = clampNumber(transform.offsetX, -50, 50);
+  const offsetY = clampNumber(transform.offsetY, -50, 50);
+  const fitScale = Math.min(outputWidth / sourceWidth, outputHeight / sourceHeight) * zoom;
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.clearRect(0, 0, outputWidth, outputHeight);
+  context.translate(
+    outputWidth / 2 + (offsetX / 100) * outputWidth,
+    outputHeight / 2 + (offsetY / 100) * outputHeight,
+  );
+  context.rotate((rotate * Math.PI) / 180);
+  context.scale(fitScale, fitScale);
+  context.drawImage(image, -sourceWidth / 2, -sourceHeight / 2, sourceWidth, sourceHeight);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (result) => {
+        if (result) {
+          resolve(result);
+        } else {
+          reject(new Error('Image edits could not be exported.'));
+        }
+      },
+      'image/webp',
+      0.9,
+    );
+  });
+
+  return new File([blob], `${cleanGalleryEditFileName(title)}-edited.webp`, { type: 'image/webp' });
+}
+
+function loadEditableImage(imageUrl: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('This image could not be loaded for editing.'));
+    image.src = imageUrl;
+  });
+}
+
+function cleanGalleryEditFileName(value: string) {
+  const cleaned = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  return cleaned || 'gallery-image';
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
 function AdminLoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1305,6 +1628,76 @@ function OverviewSection({ data, loading, errors }: { data: DashboardData; loadi
   );
 }
 
+function SiteStatusPanel({
+  underDevelopmentEnabled,
+  saving,
+  message,
+  error,
+  onToggle,
+  onEditMessage,
+}: {
+  underDevelopmentEnabled: boolean;
+  saving: boolean;
+  message: string;
+  error: string;
+  onToggle: () => void;
+  onEditMessage: () => void;
+}) {
+  const accent = underDevelopmentEnabled ? '#D14A6E' : '#6B8F71';
+
+  return (
+    <section
+      className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto] gap-4 xl:items-center"
+      style={{ border: `1px solid ${accent}66`, borderRadius: 8, backgroundColor: underDevelopmentEnabled ? 'rgba(209, 74, 110, 0.08)' : 'rgba(107, 143, 113, 0.08)', padding: 18 }}
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="font-sans text-xs uppercase" style={{ color: accent, letterSpacing: '0.12em' }}>
+            Site visibility
+          </p>
+          <span
+            className="font-sans text-xs uppercase px-2.5 py-1"
+            style={{ color: accent, border: `1px solid ${accent}88`, borderRadius: 4, letterSpacing: '0.08em' }}
+          >
+            {underDevelopmentEnabled ? 'Under development page is on' : 'Website is live'}
+          </span>
+        </div>
+        <h2 className="font-serif mt-3" style={{ color: '#E8DDD4', fontSize: 24, lineHeight: 1.2, fontWeight: 600 }}>
+          {underDevelopmentEnabled ? 'Public visitors are seeing the holding page.' : 'Public visitors can see the website.'}
+        </h2>
+        <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.68, lineHeight: 1.6 }}>
+          Turn this on while the site is unfinished. The admin portal stays available, so you can turn it off whenever the site is ready.
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          {message && <StatusMessage tone="success">{message}</StatusMessage>}
+          {error && <StatusMessage tone="error">{error}</StatusMessage>}
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row xl:flex-col gap-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={saving}
+          className="font-sans text-xs uppercase px-5 py-3 inline-flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-60"
+          style={{ color: '#0A0A0A', backgroundColor: accent, border: `1px solid ${accent}`, borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+        >
+          {saving ? <Loader2 className="animate-spin" size={14} /> : underDevelopmentEnabled ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+          {saving ? 'Saving' : underDevelopmentEnabled ? 'Make website live' : 'Hide site for now'}
+        </button>
+        <button
+          type="button"
+          onClick={onEditMessage}
+          className="font-sans text-xs uppercase px-5 py-3 transition-all duration-300"
+          style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+        >
+          Edit holding message
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function MessagesSection({
   messages,
   loading,
@@ -1522,42 +1915,86 @@ function GalleryManagerSection({
   error,
   onCreate,
   onUpdate,
+  onImportLegacy,
 }: {
   items: GalleryItem[];
   loading: boolean;
   error: string;
   onCreate: (input: GalleryItemInput) => Promise<void>;
   onUpdate: (id: number | string, input: GalleryItemUpdate) => Promise<void>;
+  onImportLegacy: () => Promise<LegacyGalleryImportResult>;
 }) {
   const [values, setValues] = useState<GalleryFormValues>(emptyGalleryFormValues);
   const [editingItem, setEditingItem] = useState<GalleryItem | null>(null);
+  const [editValues, setEditValues] = useState<GalleryFormValues>(emptyGalleryFormValues);
+  const [editTransform, setEditTransform] = useState<GalleryImageTransformValues>(defaultGalleryImageTransformValues);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const [importingLegacy, setImportingLegacy] = useState(false);
+  const [legacyImportNotice, setLegacyImportNotice] = useState('');
+  const [legacyImportError, setLegacyImportError] = useState('');
   const [notice, setNotice] = useState('');
   const [formError, setFormError] = useState('');
+  const [editNotice, setEditNotice] = useState('');
+  const [editError, setEditError] = useState('');
 
   useEffect(() => {
     if (!selectedFile) {
-      setPreviewUrl(editingItem?.image_url ?? '');
+      setPreviewUrl('');
       return;
     }
 
     const url = URL.createObjectURL(selectedFile);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [editingItem?.image_url, selectedFile]);
+  }, [selectedFile]);
+
+  useEffect(() => {
+    if (!editingItem) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !saving) {
+        closeEditModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [editingItem, saving]);
 
   const updateValue = (key: keyof GalleryFormValues, value: string | boolean) => {
     setValues((current) => ({ ...current, [key]: value }));
   };
 
+  const updateEditValue = (key: keyof GalleryFormValues, value: string | boolean) => {
+    setEditValues((current) => ({ ...current, [key]: value }));
+    setEditNotice('');
+  };
+
+  const updateEditTransform = (key: keyof GalleryImageTransformValues, value: number) => {
+    setEditTransform((current) => ({ ...current, [key]: value }));
+    setEditNotice('');
+  };
+
   const resetForm = () => {
     setValues(emptyGalleryFormValues);
-    setEditingItem(null);
     setSelectedFile(null);
     setPreviewUrl('');
     setFormError('');
+  };
+
+  const closeEditModal = () => {
+    setEditingItem(null);
+    setEditValues(emptyGalleryFormValues);
+    setEditTransform(defaultGalleryImageTransformValues);
+    setEditError('');
+    setEditNotice('');
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1577,10 +2014,10 @@ function GalleryManagerSection({
 
   const handleEdit = (item: GalleryItem) => {
     setEditingItem(item);
-    setValues(galleryFormFromItem(item));
-    setSelectedFile(null);
-    setFormError('');
-    setNotice('');
+    setEditValues(galleryFormFromItem(item));
+    setEditTransform(defaultGalleryImageTransformValues);
+    setEditError('');
+    setEditNotice('');
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1602,10 +2039,7 @@ function GalleryManagerSection({
     try {
       const uploaded = selectedFile ? await uploadGalleryImage(selectedFile) : undefined;
 
-      if (editingItem) {
-        await onUpdate(editingItem.id, galleryUpdateFromForm(values, uploaded));
-        setNotice('Gallery item updated.');
-      } else if (uploaded) {
+      if (uploaded) {
         await onCreate(galleryInputFromForm(values, uploaded));
         setNotice('Gallery item created.');
       }
@@ -1618,18 +2052,75 @@ function GalleryManagerSection({
     }
   };
 
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingItem) return;
+
+    setEditError('');
+    setEditNotice('');
+
+    if (!editValues.title.trim()) {
+      setEditError('Please add a title for this gallery item.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let editedImage: { url: string; path: string } | undefined;
+
+      if (editingItem.image_url && galleryTransformHasChanges(editTransform)) {
+        const file = await createTransformedGalleryImageFile(editingItem.image_url, editValues.title || editingItem.title || 'gallery-image', editTransform);
+        editedImage = await uploadGalleryImage(file);
+      }
+
+      await onUpdate(editingItem.id, galleryUpdateFromForm(editValues, editedImage));
+      closeEditModal();
+      setNotice('Gallery item updated.');
+    } catch (saveError) {
+      setEditError(saveError instanceof Error ? saveError.message : 'Gallery item could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleArchive = async (item: GalleryItem) => {
     setFormError('');
     setNotice('');
+    setEditError('');
+    setEditNotice('');
     setSaving(true);
     try {
       await onUpdate(item.id, { is_active: false });
       setNotice('Gallery item archived.');
-      if (editingItem?.id === item.id) resetForm();
+      if (editingItem?.id === item.id) closeEditModal();
     } catch (archiveError) {
-      setFormError(archiveError instanceof Error ? archiveError.message : 'Gallery item could not be archived.');
+      const message = archiveError instanceof Error ? archiveError.message : 'Gallery item could not be archived.';
+      if (editingItem?.id === item.id) {
+        setEditError(message);
+      } else {
+        setFormError(message);
+      }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleImportLegacy = async () => {
+    setLegacyImportError('');
+    setLegacyImportNotice('');
+    setImportingLegacy(true);
+
+    try {
+      const result = await onImportLegacy();
+      if (result.created.length > 0) {
+        setLegacyImportNotice(`Imported ${result.created.length} existing Velvet Ink image${result.created.length === 1 ? '' : 's'}. ${result.skipped} already existed.`);
+      } else {
+        setLegacyImportNotice('Existing Velvet Ink images are already imported.');
+      }
+    } catch (importError) {
+      setLegacyImportError(importError instanceof Error ? importError.message : 'Existing Velvet Ink images could not be imported.');
+    } finally {
+      setImportingLegacy(false);
     }
   };
 
@@ -1640,25 +2131,53 @@ function GalleryManagerSection({
       {error && <ErrorPanel message={error} />}
 
       <section style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div>
+            <h2 className="font-serif text-2xl" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+              Existing Velvet Ink Images
+            </h2>
+            <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.62, lineHeight: 1.55 }}>
+              Bring the original coded Velvet Ink tattoo and piercing images into Gallery Manager so they can be edited, ordered, featured, or archived here.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleImportLegacy()}
+            disabled={importingLegacy || saving}
+            className="font-sans text-xs uppercase px-5 py-3 inline-flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-60"
+            style={{
+              color: '#0A0A0A',
+              backgroundColor: '#C4A265',
+              border: '1px solid #C4A265',
+              borderRadius: 6,
+              cursor: importingLegacy || saving ? 'wait' : 'pointer',
+              letterSpacing: '0.1em',
+            }}
+          >
+            {importingLegacy ? <Loader2 className="animate-spin" size={14} /> : <ImageIcon size={14} />}
+            Import Existing Velvet Ink Images
+          </button>
+        </div>
+
+        {(legacyImportNotice || legacyImportError) && (
+          <div className="mt-4">
+            {legacyImportNotice && <StatusMessage tone="success">{legacyImportNotice}</StatusMessage>}
+            {legacyImportError && <StatusMessage tone="error">{legacyImportError}</StatusMessage>}
+          </div>
+        )}
+      </section>
+
+      <section style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
           <div>
             <h2 className="font-serif text-2xl" style={{ color: '#E8DDD4', fontWeight: 600 }}>
-              {editingItem ? 'Edit Gallery Item' : 'Add Gallery Item'}
+              Add Gallery Item
             </h2>
             <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.62, lineHeight: 1.55 }}>
               Upload live site images, organize where they appear, and archive anything that should be hidden.
             </p>
           </div>
-          {editingItem && (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="font-sans text-xs uppercase px-4 py-2.5 transition-all duration-300"
-              style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
-            >
-              New item
-            </button>
-          )}
         </div>
 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
@@ -1669,7 +2188,7 @@ function GalleryManagerSection({
               style={{ border: '1px dashed #2A2A2A', borderRadius: 8, backgroundColor: '#0A0A0A', cursor: 'pointer', overflow: 'hidden' }}
             >
               {previewUrl ? (
-                <img src={previewUrl} alt="Gallery preview" className="w-full h-full object-cover" style={{ minHeight: 260 }} />
+                <img src={previewUrl} alt="Gallery preview" className="w-full h-full object-contain" style={{ minHeight: 260 }} />
               ) : (
                 <>
                   <Upload size={24} style={{ color: '#F4A5AE' }} />
@@ -1753,19 +2272,8 @@ function GalleryManagerSection({
                 style={{ color: '#0A0A0A', backgroundColor: '#F4A5AE', border: '1px solid #F4A5AE', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
               >
                 {saving ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
-                {editingItem ? 'Save item' : 'Upload item'}
+                Upload item
               </button>
-              {editingItem && (
-                <button
-                  type="button"
-                  onClick={() => void handleArchive(editingItem)}
-                  disabled={saving}
-                  className="font-sans text-xs uppercase px-5 py-3 transition-all duration-300 disabled:opacity-60"
-                  style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
-                >
-                  Archive
-                </button>
-              )}
             </div>
           </div>
         </form>
@@ -1779,7 +2287,7 @@ function GalleryManagerSection({
             <article key={item.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', overflow: 'hidden' }}>
               <div style={{ aspectRatio: '4 / 3', backgroundColor: '#0A0A0A' }}>
                 {item.image_url ? (
-                  <img src={item.image_url} alt={item.alt_text || item.title || 'Gallery item'} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                  <img src={item.image_url} alt={item.alt_text || item.title || 'Gallery item'} className="w-full h-full object-contain" loading="lazy" decoding="async" />
                 ) : (
                   <div className="h-full flex items-center justify-center" style={{ color: '#E8DDD4', opacity: 0.35 }}>
                     <ImageIcon size={28} />
@@ -1796,6 +2304,9 @@ function GalleryManagerSection({
                       Featured
                     </span>
                   )}
+                  <span className="font-sans text-xs uppercase px-2.5 py-1" style={{ color: '#C4A265', border: '1px solid #C4A265', borderRadius: 4, letterSpacing: '0.08em' }}>
+                    {galleryItemSourceLabel(item)}
+                  </span>
                 </div>
                 <h3 className="font-serif text-lg" style={{ color: '#E8DDD4', fontWeight: 600 }}>{item.title || 'Untitled'}</h3>
                 <p className="font-sans text-xs uppercase mt-2" style={{ color: '#F4A5AE', letterSpacing: '0.1em' }}>
@@ -1831,6 +2342,801 @@ function GalleryManagerSection({
           ))}
         </div>
       )}
+
+      {editingItem && (
+        <GalleryEditDialog
+          item={editingItem}
+          values={editValues}
+          transform={editTransform}
+          saving={saving}
+          error={editError}
+          notice={editNotice}
+          onValueChange={updateEditValue}
+          onTransformChange={updateEditTransform}
+          onResetTransform={() => setEditTransform(defaultGalleryImageTransformValues)}
+          onSubmit={handleEditSubmit}
+          onArchive={() => void handleArchive(editingItem)}
+          onClose={closeEditModal}
+        />
+      )}
+    </div>
+  );
+}
+
+function GalleryEditDialog({
+  item,
+  values,
+  transform,
+  saving,
+  error,
+  notice,
+  onValueChange,
+  onTransformChange,
+  onResetTransform,
+  onSubmit,
+  onArchive,
+  onClose,
+}: {
+  item: GalleryItem;
+  values: GalleryFormValues;
+  transform: GalleryImageTransformValues;
+  saving: boolean;
+  error: string;
+  notice: string;
+  onValueChange: (key: keyof GalleryFormValues, value: string | boolean) => void;
+  onTransformChange: (key: keyof GalleryImageTransformValues, value: number) => void;
+  onResetTransform: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onArchive: () => void;
+  onClose: () => void;
+}) {
+  const previewTransform = `translate(${transform.offsetX}%, ${transform.offsetY}%) rotate(${transform.rotate}deg) scale(${transform.zoom})`;
+  const hasImage = Boolean(item.image_url);
+  const [dragState, setDragState] = useState<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-6" role="dialog" aria-modal="true" aria-labelledby="gallery-edit-title">
+      <button
+        type="button"
+        aria-label="Close gallery editor"
+        className="absolute inset-0"
+        onClick={saving ? undefined : onClose}
+        style={{ backgroundColor: 'rgba(10, 10, 10, 0.86)', border: 'none', cursor: saving ? 'wait' : 'pointer' }}
+      />
+
+      <section
+        className="relative w-full max-w-[1120px] max-h-[92vh] overflow-y-auto"
+        style={{ border: '1px solid #2A2A2A', borderRadius: 8, backgroundColor: '#111111', color: '#E8DDD4', boxShadow: '0 24px 80px rgba(0,0,0,0.45)' }}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 px-5 md:px-6 py-4" style={{ backgroundColor: 'rgba(17, 17, 17, 0.96)', borderBottom: '1px solid #1A1A1A', backdropFilter: 'blur(10px)' }}>
+          <div className="min-w-0">
+            <p className="font-sans text-xs uppercase" style={{ color: '#F4A5AE', letterSpacing: '0.12em' }}>
+              Gallery Manager
+            </p>
+            <h2 id="gallery-edit-title" className="font-serif text-2xl mt-1 truncate" style={{ fontWeight: 600 }}>
+              Edit {item.title || 'Gallery Item'}
+            </h2>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close gallery editor"
+            className="flex items-center justify-center shrink-0 transition-all duration-300 disabled:opacity-50"
+            style={{ width: 42, height: 42, color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6, cursor: saving ? 'wait' : 'pointer' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="grid grid-cols-1 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)] gap-6 p-5 md:p-6">
+          <div className="flex flex-col gap-5">
+            <div style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#0A0A0A', padding: 14 }}>
+              <div
+                className="relative overflow-hidden"
+                onPointerDown={(event) => {
+                  if (!hasImage || saving) return;
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setDragState({
+                    pointerId: event.pointerId,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    startOffsetX: transform.offsetX,
+                    startOffsetY: transform.offsetY,
+                    width: rect.width || 1,
+                    height: rect.height || 1,
+                  });
+                }}
+                onPointerMove={(event) => {
+                  if (!dragState || dragState.pointerId !== event.pointerId) return;
+                  const nextOffsetX = clampNumber(dragState.startOffsetX + ((event.clientX - dragState.startX) / dragState.width) * 100, -50, 50);
+                  const nextOffsetY = clampNumber(dragState.startOffsetY + ((event.clientY - dragState.startY) / dragState.height) * 100, -50, 50);
+                  onTransformChange('offsetX', Math.round(nextOffsetX));
+                  onTransformChange('offsetY', Math.round(nextOffsetY));
+                }}
+                onPointerUp={(event) => {
+                  if (dragState?.pointerId === event.pointerId) {
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                    setDragState(null);
+                  }
+                }}
+                onPointerCancel={() => setDragState(null)}
+                style={{
+                  aspectRatio: '4 / 3',
+                  borderRadius: 6,
+                  backgroundColor: '#050505',
+                  cursor: hasImage && !saving ? (dragState ? 'grabbing' : 'grab') : 'default',
+                  touchAction: 'none',
+                }}
+              >
+                {hasImage ? (
+                  <img
+                    src={item.image_url || ''}
+                    alt={values.alt_text || values.title || item.title || 'Gallery item preview'}
+                    className="w-full h-full object-contain select-none"
+                    draggable={false}
+                    style={{ transform: previewTransform, transformOrigin: 'center', transition: dragState ? 'none' : 'transform 180ms ease', pointerEvents: 'none' }}
+                    loading="eager"
+                    decoding="async"
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center" style={{ color: '#E8DDD4', opacity: 0.35 }}>
+                    <ImageIcon size={30} />
+                  </div>
+                )}
+                {hasImage && (
+                  <div
+                    className="absolute left-3 bottom-3 font-sans text-[10px] uppercase px-2.5 py-1"
+                    style={{ color: '#E8DDD4', backgroundColor: 'rgba(10,10,10,0.72)', border: '1px solid rgba(232,221,212,0.18)', borderRadius: 4, letterSpacing: '0.08em', pointerEvents: 'none' }}
+                  >
+                    Drag image to move
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 grid gap-4">
+                <p className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.58, lineHeight: 1.45 }}>
+                  The full image is shown first. Drag the image to reposition it, then use zoom or rotate only if you want to create a new edited copy.
+                </p>
+                <GalleryRangeControl
+                  icon={<ZoomIn size={14} />}
+                  label="Zoom"
+                  value={transform.zoom}
+                  min={1}
+                  max={3}
+                  step={0.05}
+                  disabled={!hasImage || saving}
+                  displayValue={`${Math.round(transform.zoom * 100)}%`}
+                  onChange={(value) => onTransformChange('zoom', value)}
+                />
+                <GalleryRangeControl
+                  icon={<Crop size={14} />}
+                  label="Crop X"
+                  value={transform.offsetX}
+                  min={-50}
+                  max={50}
+                  step={1}
+                  disabled={!hasImage || saving}
+                  displayValue={`${transform.offsetX}%`}
+                  onChange={(value) => onTransformChange('offsetX', value)}
+                />
+                <GalleryRangeControl
+                  icon={<Crop size={14} />}
+                  label="Crop Y"
+                  value={transform.offsetY}
+                  min={-50}
+                  max={50}
+                  step={1}
+                  disabled={!hasImage || saving}
+                  displayValue={`${transform.offsetY}%`}
+                  onChange={(value) => onTransformChange('offsetY', value)}
+                />
+                <GalleryRangeControl
+                  icon={<RotateCw size={14} />}
+                  label="Rotate"
+                  value={transform.rotate}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  disabled={!hasImage || saving}
+                  displayValue={`${transform.rotate} deg`}
+                  onChange={(value) => onTransformChange('rotate', value)}
+                />
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onTransformChange('rotate', clampNumber(transform.rotate - 90, -180, 180))}
+                    disabled={!hasImage || saving}
+                    className="font-sans text-xs uppercase px-3 py-2 inline-flex items-center gap-2 transition-all duration-300 disabled:opacity-50"
+                    style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: !hasImage || saving ? 'not-allowed' : 'pointer', letterSpacing: '0.08em' }}
+                  >
+                    <RotateCcw size={13} />
+                    Left
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onTransformChange('rotate', clampNumber(transform.rotate + 90, -180, 180))}
+                    disabled={!hasImage || saving}
+                    className="font-sans text-xs uppercase px-3 py-2 inline-flex items-center gap-2 transition-all duration-300 disabled:opacity-50"
+                    style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: !hasImage || saving ? 'not-allowed' : 'pointer', letterSpacing: '0.08em' }}
+                  >
+                    <RotateCw size={13} />
+                    Right
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onResetTransform}
+                    disabled={!hasImage || saving}
+                    className="font-sans text-xs uppercase px-3 py-2 inline-flex items-center gap-2 transition-all duration-300 disabled:opacity-50"
+                    style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: !hasImage || saving ? 'not-allowed' : 'pointer', letterSpacing: '0.08em' }}
+                  >
+                    <RotateCcw size={13} />
+                    Reset
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 content-start">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CalendarInput id="gallery-edit-title-input" label="Title" value={values.title} onChange={(value) => onValueChange('title', value)} required />
+              <CalendarInput id="gallery-edit-alt" label="Alt text" value={values.alt_text} onChange={(value) => onValueChange('alt_text', value)} placeholder="Describe the image for screen readers" />
+            </div>
+
+            <CalendarTextarea id="gallery-edit-description" label="Description" value={values.description} onChange={(value) => onValueChange('description', value)} rows={4} />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="gallery-edit-category" className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+                  Category
+                </label>
+                <select
+                  id="gallery-edit-category"
+                  value={values.category}
+                  onChange={(event) => onValueChange('category', event.target.value as GalleryCategory)}
+                  className="w-full font-sans text-sm px-3 py-3 outline-none"
+                  style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+                >
+                  {GALLERY_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>{galleryLabel(category)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="gallery-edit-location" className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+                  Display location
+                </label>
+                <select
+                  id="gallery-edit-location"
+                  value={values.display_location}
+                  onChange={(event) => onValueChange('display_location', event.target.value as GalleryDisplayLocation)}
+                  className="w-full font-sans text-sm px-3 py-3 outline-none"
+                  style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+                >
+                  {GALLERY_DISPLAY_LOCATIONS.map((location) => (
+                    <option key={location} value={location}>{galleryLabel(location)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <CalendarInput id="gallery-edit-order" label="Display order" value={values.display_order} onChange={(value) => onValueChange('display_order', value)} type="number" />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-5">
+              <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+                <input type="checkbox" checked={values.is_active} onChange={(event) => onValueChange('is_active', event.target.checked)} />
+                Active
+              </label>
+              <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+                <input type="checkbox" checked={values.is_featured} onChange={(event) => onValueChange('is_featured', event.target.checked)} />
+                Featured
+              </label>
+            </div>
+
+            {error && <StatusMessage tone="error">{error}</StatusMessage>}
+            {notice && <StatusMessage tone="success">{notice}</StatusMessage>}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3" style={{ borderTop: '1px solid #1A1A1A' }}>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="font-sans text-xs uppercase px-5 py-3 inline-flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
+                  style={{ color: '#0A0A0A', backgroundColor: '#F4A5AE', border: '1px solid #F4A5AE', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+                >
+                  {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                  {saving ? 'Saving' : 'Save changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={saving}
+                  className="font-sans text-xs uppercase px-5 py-3 transition-all duration-300 disabled:opacity-50"
+                  style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={onArchive}
+                disabled={saving || item.is_active !== true}
+                className="font-sans text-xs uppercase px-5 py-3 transition-all duration-300 disabled:opacity-50"
+                style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #D14A6E', borderRadius: 6, cursor: saving || item.is_active !== true ? 'not-allowed' : 'pointer', letterSpacing: '0.1em' }}
+              >
+                Archive
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function GalleryRangeControl({
+  icon,
+  label,
+  value,
+  min,
+  max,
+  step,
+  disabled,
+  displayValue,
+  onChange,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  disabled?: boolean;
+  displayValue: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="grid gap-2">
+      <span className="font-sans text-xs uppercase flex items-center justify-between gap-3" style={{ color: '#E8DDD4', opacity: 0.72, letterSpacing: '0.1em' }}>
+        <span className="inline-flex items-center gap-2">
+          {icon}
+          {label}
+        </span>
+        <span style={{ color: '#F4A5AE', opacity: 1, letterSpacing: 0 }}>{displayValue}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-full"
+      />
+    </label>
+  );
+}
+
+function SiteContentManagerSection({
+  items,
+  loading,
+  error,
+  onCreate,
+  onUpdate,
+}: {
+  items: SiteContentItem[];
+  loading: boolean;
+  error: string;
+  onCreate: (input: SiteContentInput) => Promise<void>;
+  onUpdate: (id: number | string, input: SiteContentUpdate) => Promise<void>;
+}) {
+  const [values, setValues] = useState<SiteContentFormValues>(emptySiteContentFormValues);
+  const [editingItem, setEditingItem] = useState<SiteContentItem | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [formError, setFormError] = useState('');
+  const [locationFilter, setLocationFilter] = useState<'all' | SiteContentDisplayLocation>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | SiteContentType>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [featuredFilter, setFeaturedFilter] = useState<'all' | 'featured'>('all');
+  const [search, setSearch] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const filteredItems = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return items.filter((item) => {
+      if (locationFilter !== 'all' && item.display_location !== locationFilter) return false;
+      if (typeFilter !== 'all' && item.content_type !== typeFilter) return false;
+      if (activeFilter === 'active' && item.is_active !== true) return false;
+      if (activeFilter === 'inactive' && item.is_active === true) return false;
+      if (featuredFilter === 'featured' && item.is_featured !== true) return false;
+      if (!query) return true;
+
+      return [item.content_key, item.title, item.subtitle, item.body, item.section]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+  }, [activeFilter, featuredFilter, items, locationFilter, search, typeFilter]);
+
+  const updateValue = (key: keyof SiteContentFormValues, value: string | boolean) => {
+    setValues((current) => ({ ...current, [key]: value }));
+  };
+
+  const resetForm = () => {
+    setValues(emptySiteContentFormValues);
+    setEditingItem(null);
+    setFormError('');
+    setShowAdvanced(false);
+  };
+
+  const handleEdit = (item: SiteContentItem) => {
+    setEditingItem(item);
+    setValues(siteContentFormFromItem(item));
+    setFormError('');
+    setNotice('');
+    setShowAdvanced(false);
+  };
+
+  const applyTemplate = (template: (typeof ownerContentTemplates)[number]) => {
+    setEditingItem(null);
+    setValues((current) => ({
+      ...emptySiteContentFormValues,
+      title: current.title,
+      body: current.body,
+      subtitle: current.subtitle,
+      button_label: current.button_label,
+      button_url: current.button_url,
+      display_location: template.display_location,
+      content_type: template.content_type,
+      is_featured: template.is_featured,
+      section: template.section,
+    }));
+    setFormError('');
+    setNotice('');
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFormError('');
+    setNotice('');
+
+    if (!values.title.trim() && !values.body.trim()) {
+      setFormError('Please add a headline or message so this update has something to show.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (editingItem) {
+        await onUpdate(editingItem.id, siteContentUpdateFromForm(values));
+        setNotice('Site content updated.');
+      } else {
+        await onCreate(siteContentInputFromForm(values));
+        setNotice('Site content created.');
+      }
+      resetForm();
+    } catch (saveError) {
+      setFormError(saveError instanceof Error ? saveError.message : 'Site content could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleArchive = async (item: SiteContentItem) => {
+    setFormError('');
+    setNotice('');
+    setSaving(true);
+    try {
+      await onUpdate(item.id, { is_active: false });
+      setNotice('Site content archived.');
+      if (editingItem?.id === item.id) resetForm();
+    } catch (archiveError) {
+      setFormError(archiveError instanceof Error ? archiveError.message : 'Site content could not be archived.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <InlineLoading label="Loading site content" />;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {error && <ErrorPanel message={error} />}
+
+      <section style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
+          <div>
+            <h2 className="font-serif text-2xl" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+              {editingItem ? 'Edit Update' : 'Post an Update'}
+            </h2>
+            <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.62, lineHeight: 1.55 }}>
+              Pick where it should show, write the update, and publish. The technical details are handled for you.
+            </p>
+          </div>
+          {editingItem && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="font-sans text-xs uppercase px-4 py-2.5 transition-all duration-300"
+              style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+            >
+              New content
+            </button>
+          )}
+        </div>
+
+        {!editingItem && (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 mb-5">
+            {ownerContentTemplates.map((template) => {
+              const selected = values.display_location === template.display_location && values.content_type === template.content_type;
+              return (
+                <button
+                  key={template.label}
+                  type="button"
+                  onClick={() => applyTemplate(template)}
+                  className="text-left transition-all duration-300"
+                  style={{
+                    color: '#E8DDD4',
+                    backgroundColor: selected ? 'rgba(244, 165, 174, 0.12)' : '#0A0A0A',
+                    border: selected ? '1px solid rgba(244, 165, 174, 0.45)' : '1px solid #2A2A2A',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    padding: 14,
+                  }}
+                >
+                  <span className="font-serif text-base block" style={{ color: selected ? '#F4A5AE' : '#E8DDD4', fontWeight: 600 }}>
+                    {template.label}
+                  </span>
+                  <span className="font-sans text-xs block mt-2" style={{ color: '#E8DDD4', opacity: 0.58, lineHeight: 1.45 }}>
+                    {template.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="content-location" className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+                Where should this show?
+              </label>
+              <select
+                id="content-location"
+                value={values.display_location}
+                onChange={(event) => updateValue('display_location', event.target.value as SiteContentDisplayLocation)}
+                className="w-full font-sans text-sm px-3 py-3 outline-none"
+                style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+              >
+                {SITE_CONTENT_DISPLAY_LOCATIONS.filter((location) => location !== 'general').map((location) => (
+                  <option key={location} value={location}>{siteContentLabel(location)}</option>
+                ))}
+              </select>
+            </div>
+            <CalendarInput id="content-title" label="Headline" value={values.title} onChange={(value) => updateValue('title', value)} placeholder="What should visitors know?" />
+          </div>
+
+          <CalendarTextarea id="content-body" label="Message" value={values.body} onChange={(value) => updateValue('body', value)} rows={4} placeholder="Write the update in plain language." />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CalendarInput id="content-button-label" label="Button text (optional)" value={values.button_label} onChange={(value) => updateValue('button_label', value)} placeholder="Book now, Shop now, Learn more" />
+            <CalendarInput id="content-button-url" label="Button link (optional)" value={values.button_url} onChange={(value) => updateValue('button_url', value)} placeholder="/events or https://..." />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-5">
+            <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+              <input type="checkbox" checked={values.is_active} onChange={(event) => updateValue('is_active', event.target.checked)} />
+              Publish now
+            </label>
+            <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+              <input type="checkbox" checked={values.is_featured} onChange={(event) => updateValue('is_featured', event.target.checked)} />
+              Feature this update
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((open) => !open)}
+            className="font-sans text-xs uppercase justify-self-start px-3 py-2 transition-all duration-300"
+            style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+          >
+            {showAdvanced ? 'Hide advanced options' : 'Advanced options'}
+          </button>
+
+          {showAdvanced && (
+            <div className="grid gap-4" style={{ border: '1px solid #2A2A2A', borderRadius: 8, backgroundColor: '#0A0A0A', padding: 16 }}>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <CalendarInput id="content-key" label="Internal key" value={values.content_key} onChange={(value) => updateValue('content_key', value)} placeholder="Auto-generated if blank" />
+                <CalendarInput id="content-section" label="Internal section" value={values.section} onChange={(value) => updateValue('section', value)} placeholder="Optional" />
+                <CalendarInput id="content-order" label="Display order" value={values.display_order} onChange={(value) => updateValue('display_order', value)} type="number" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <CalendarInput id="content-subtitle" label="Subtitle" value={values.subtitle} onChange={(value) => updateValue('subtitle', value)} />
+                <CalendarInput id="content-image-url" label="Image URL" value={values.image_url} onChange={(value) => updateValue('image_url', value)} />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                  <label htmlFor="content-type" className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+                    Content style
+                  </label>
+                  <select
+                    id="content-type"
+                    value={values.content_type}
+                    onChange={(event) => updateValue('content_type', event.target.value as SiteContentType)}
+                    className="w-full font-sans text-sm px-3 py-3 outline-none"
+                    style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+                  >
+                    {SITE_CONTENT_TYPES.map((contentType) => (
+                      <option key={contentType} value={contentType}>{siteContentLabel(contentType)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <CalendarInput id="content-image-path" label="Image path" value={values.image_path} onChange={(value) => updateValue('image_path', value)} />
+                <CalendarInput id="content-starts-at" label="Starts at" value={values.starts_at} onChange={(value) => updateValue('starts_at', value)} type="datetime-local" />
+                <CalendarInput id="content-ends-at" label="Ends at" value={values.ends_at} onChange={(value) => updateValue('ends_at', value)} type="datetime-local" />
+              </div>
+            </div>
+          )}
+
+          {(values.title || values.subtitle || values.body) && (
+            <article style={{ border: '1px solid #2A2A2A', borderRadius: 8, backgroundColor: '#0A0A0A', padding: 16 }}>
+              <p className="font-sans text-xs uppercase" style={{ color: '#F4A5AE', letterSpacing: '0.12em' }}>
+                Preview
+              </p>
+              {values.title && <h3 className="font-serif text-xl mt-2" style={{ color: '#E8DDD4', fontWeight: 600 }}>{values.title}</h3>}
+              {values.subtitle && <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.68 }}>{values.subtitle}</p>}
+              {values.body && <p className="font-sans text-sm mt-3 whitespace-pre-wrap" style={{ color: '#E8DDD4', opacity: 0.72, lineHeight: 1.6 }}>{values.body}</p>}
+            </article>
+          )}
+
+          {formError && <StatusMessage tone="error">{formError}</StatusMessage>}
+          {notice && <StatusMessage tone="success">{notice}</StatusMessage>}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={saving}
+              className="font-sans text-xs uppercase px-5 py-3 inline-flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
+              style={{ color: '#0A0A0A', backgroundColor: '#F4A5AE', border: '1px solid #F4A5AE', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+            >
+              {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+              {editingItem ? 'Save update' : 'Publish update'}
+            </button>
+            {editingItem && (
+              <button
+                type="button"
+                onClick={() => void handleArchive(editingItem)}
+                disabled={saving}
+                className="font-sans text-xs uppercase px-5 py-3 transition-all duration-300 disabled:opacity-60"
+                style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+              >
+                Archive
+              </button>
+            )}
+          </div>
+        </form>
+      </section>
+
+      <section className="grid gap-4">
+        <div style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 16 }}>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_repeat(4,minmax(140px,180px))] gap-3">
+            <CalendarInput id="content-search" label="Search" value={search} onChange={setSearch} placeholder="Title or key" />
+            <FilterSelect id="content-location-filter" label="Location" value={locationFilter} onChange={(value) => setLocationFilter(value as 'all' | SiteContentDisplayLocation)} options={[{ value: 'all', label: 'All' }, ...SITE_CONTENT_DISPLAY_LOCATIONS.map((location) => ({ value: location, label: siteContentLabel(location) }))]} />
+            <FilterSelect id="content-type-filter" label="Type" value={typeFilter} onChange={(value) => setTypeFilter(value as 'all' | SiteContentType)} options={[{ value: 'all', label: 'All' }, ...SITE_CONTENT_TYPES.map((contentType) => ({ value: contentType, label: siteContentLabel(contentType) }))]} />
+            <FilterSelect id="content-active-filter" label="Status" value={activeFilter} onChange={(value) => setActiveFilter(value as 'all' | 'active' | 'inactive')} options={[{ value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
+            <FilterSelect id="content-featured-filter" label="Featured" value={featuredFilter} onChange={(value) => setFeaturedFilter(value as 'all' | 'featured')} options={[{ value: 'all', label: 'All' }, { value: 'featured', label: 'Featured' }]} />
+          </div>
+        </div>
+
+        {items.length === 0 ? (
+          <EmptyState>No site content yet.</EmptyState>
+        ) : filteredItems.length === 0 ? (
+          <EmptyState>No site content matches these filters.</EmptyState>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {filteredItems.map((item) => (
+              <article key={item.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 18 }}>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="font-sans text-xs uppercase px-2.5 py-1" style={{ color: item.is_active ? '#6B8F71' : '#C4A265', border: `1px solid ${item.is_active ? '#6B8F71' : '#C4A265'}`, borderRadius: 4, letterSpacing: '0.08em' }}>
+                    {item.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                  {item.is_featured && (
+                    <span className="font-sans text-xs uppercase px-2.5 py-1" style={{ color: '#F4A5AE', border: '1px solid #F4A5AE', borderRadius: 4, letterSpacing: '0.08em' }}>
+                      Featured
+                    </span>
+                  )}
+                </div>
+                <p className="font-sans text-xs uppercase" style={{ color: '#F4A5AE', letterSpacing: '0.12em' }}>
+                  {siteContentLabel(item.content_type)} / {siteContentLabel(item.display_location)}
+                </p>
+                <h3 className="font-serif text-xl mt-2" style={{ color: '#E8DDD4', fontWeight: 600 }}>{item.title || item.content_key || 'Untitled content'}</h3>
+                {item.subtitle && <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.68 }}>{item.subtitle}</p>}
+                {item.body && <p className="font-sans text-sm mt-3 line-clamp-3 whitespace-pre-wrap" style={{ color: '#E8DDD4', opacity: 0.72, lineHeight: 1.6 }}>{item.body}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.58 }}>
+                  <p>Shows on: {siteContentLabel(item.display_location)}</p>
+                  <p>Style: {siteContentLabel(item.content_type)}</p>
+                  <p>Starts: {item.starts_at ? formatDate(item.starts_at) : 'Immediately'}</p>
+                  <p>Ends: {item.ends_at ? formatDate(item.ends_at) : 'No end date'}</p>
+                </div>
+                <div className="flex flex-wrap gap-3 mt-5">
+                  <button
+                    type="button"
+                    onClick={() => handleEdit(item)}
+                    className="font-sans text-xs uppercase px-3 py-2 inline-flex items-center gap-2 transition-all duration-300"
+                    style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+                  >
+                    <Edit3 size={14} />
+                    Edit
+                  </button>
+                  {item.is_active && (
+                    <button
+                      type="button"
+                      onClick={() => void handleArchive(item)}
+                      disabled={saving}
+                      className="font-sans text-xs uppercase px-3 py-2 transition-all duration-300 disabled:opacity-60"
+                      style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+                    >
+                      Archive
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function FilterSelect({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full font-sans text-sm px-3 py-3 outline-none"
+        style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -2814,6 +4120,7 @@ function AdminPortal({
   logoutError: string;
 }) {
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData>(emptyDashboardData);
   const [dashboardErrors, setDashboardErrors] = useState<DashboardErrors>({});
   const [dashboardLoading, setDashboardLoading] = useState(true);
@@ -2822,6 +4129,11 @@ function AdminPortal({
   const [calendarDraft, setCalendarDraft] = useState<CalendarEventFormValues | null>(null);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryError, setGalleryError] = useState('');
+  const [siteContentItems, setSiteContentItems] = useState<SiteContentItem[]>([]);
+  const [siteContentError, setSiteContentError] = useState('');
+  const [siteStatusSaving, setSiteStatusSaving] = useState(false);
+  const [siteStatusMessage, setSiteStatusMessage] = useState('');
+  const [siteStatusError, setSiteStatusError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -2829,6 +4141,8 @@ function AdminPortal({
   const adminName = userDisplayName(session.user, profile);
   const adminEmail = userEmail(session.user, profile);
   const adminRole = roleLabel(profile);
+  const underDevelopmentItem = siteContentItems.find((item) => item.content_key === UNDER_DEVELOPMENT_CONTENT_KEY);
+  const underDevelopmentEnabled = underDevelopmentItem?.is_active === true;
 
   const loadDashboardData = useCallback(async (refresh = false) => {
     if (refresh) {
@@ -2838,12 +4152,13 @@ function AdminPortal({
       setDashboardLoading(true);
     }
 
-    const [messagesResult, bookingsResult, commissionsResult, calendarResult, galleryResult] = await Promise.all([
+    const [messagesResult, bookingsResult, commissionsResult, calendarResult, galleryResult, siteContentResult] = await Promise.all([
       supabase.from('contact_messages').select('*').order('created_at', { ascending: false }),
       supabase.from('booking_inquiries').select('*').order('created_at', { ascending: false }),
       supabase.from('commission_inquiries').select('*').order('created_at', { ascending: false }),
       supabase.from('calendar_events').select('*').order('start_date', { ascending: true }).order('start_time', { ascending: true }),
       getGalleryItems({ activeOnly: false }).then((data) => ({ data, error: null })).catch((error: Error) => ({ data: null, error })),
+      getSiteContent({ activeOnly: false }).then((data) => ({ data, error: null })).catch((error: Error) => ({ data: null, error })),
     ]);
 
     const nextErrors: DashboardErrors = {};
@@ -2852,6 +4167,7 @@ function AdminPortal({
     if (commissionsResult.error) nextErrors.commissions = `Unable to load commission requests: ${commissionsResult.error.message}`;
     setCalendarError(calendarResult.error ? `Unable to load calendar events: ${calendarResult.error.message}` : '');
     setGalleryError(galleryResult.error ? `Unable to load gallery items: ${galleryResult.error.message}` : '');
+    setSiteContentError(siteContentResult.error ? `Unable to load site content: ${siteContentResult.error.message}` : '');
 
     setDashboardData((current) => ({
       messages: messagesResult.error ? current.messages : ((messagesResult.data ?? []) as ContactMessage[]),
@@ -2862,13 +4178,16 @@ function AdminPortal({
       setCalendarEvents((calendarResult.data ?? []) as CalendarEvent[]);
     }
     if (!galleryResult.error) {
-      setGalleryItems((galleryResult.data ?? []) as GalleryItem[]);
+      setGalleryItems(sortGalleryItems((galleryResult.data ?? []) as GalleryItem[]));
+    }
+    if (!siteContentResult.error) {
+      setSiteContentItems(sortSiteContentItems((siteContentResult.data ?? []) as SiteContentItem[]));
     }
     setDashboardErrors(nextErrors);
     setDashboardLoading(false);
     setRefreshing(false);
 
-    if (Object.keys(nextErrors).length === 0 && !calendarResult.error && !galleryResult.error) {
+    if (Object.keys(nextErrors).length === 0 && !calendarResult.error && !galleryResult.error && !siteContentResult.error) {
       setLastUpdated(new Date());
       setRefreshNotice(refresh ? 'Dashboard refreshed.' : '');
     }
@@ -2995,19 +4314,57 @@ function AdminPortal({
   const openCalendarDraft = useCallback((values: CalendarEventFormValues) => {
     setCalendarDraft(values);
     setActiveTab('calendar');
+    setMobileMenuOpen(false);
   }, []);
 
   const createGalleryEntry = useCallback(async (input: GalleryItemInput) => {
     const item = await createGalleryItem(input);
-    setGalleryItems((current) => [item, ...current].sort((left, right) => (left.display_order ?? 0) - (right.display_order ?? 0)));
+    setGalleryItems((current) => mergeGalleryItems(current, [item]));
   }, []);
 
   const updateGalleryEntry = useCallback(async (id: number | string, input: GalleryItemUpdate) => {
     const item = await updateGalleryItem(id, input);
-    setGalleryItems((current) => current
-      .map((currentItem) => (currentItem.id === id ? item : currentItem))
-      .sort((left, right) => (left.display_order ?? 0) - (right.display_order ?? 0)));
+    setGalleryItems((current) => mergeGalleryItems(current.filter((currentItem) => currentItem.id !== id), [item]));
   }, []);
+
+  const importLegacyGalleryEntries = useCallback(async () => {
+    const result = await importLegacyVelvetInkGalleryItems();
+    if (result.created.length > 0) {
+      setGalleryItems((current) => mergeGalleryItems(current, result.created));
+    }
+    return result;
+  }, []);
+
+  const createSiteContentEntry = useCallback(async (input: SiteContentInput) => {
+    const item = await createSiteContent(input);
+    setSiteContentItems((current) => mergeSiteContentItems(current, [item]));
+  }, []);
+
+  const updateSiteContentEntry = useCallback(async (id: number | string, input: SiteContentUpdate) => {
+    const item = await updateSiteContent(id, input);
+    setSiteContentItems((current) => mergeSiteContentItems(current.filter((currentItem) => currentItem.id !== id), [item]));
+  }, []);
+
+  const toggleUnderDevelopmentMode = useCallback(async () => {
+    const nextEnabled = !underDevelopmentEnabled;
+    setSiteStatusSaving(true);
+    setSiteStatusMessage('');
+    setSiteStatusError('');
+
+    try {
+      const item = await setUnderDevelopmentMode(nextEnabled);
+      setSiteContentItems((current) => mergeSiteContentItems(current.filter((currentItem) => currentItem.id !== item.id), [item]));
+      setSiteStatusMessage(
+        nextEnabled
+          ? 'Under development page is on. Public visitors will see the holding page.'
+          : 'Website is live again. Public visitors can see the full site.',
+      );
+    } catch (statusError) {
+      setSiteStatusError(statusError instanceof Error ? statusError.message : 'Site visibility could not be changed.');
+    } finally {
+      setSiteStatusSaving(false);
+    }
+  }, [underDevelopmentEnabled]);
 
   const tabs = [
     {
@@ -3046,55 +4403,132 @@ function AdminPortal({
       icon: <ImageIcon size={16} />,
       count: galleryItems.length,
     },
+    {
+      id: 'content' as const,
+      label: 'Site Content',
+      icon: <Megaphone size={16} />,
+      count: siteContentItems.length,
+    },
   ];
 
+  const activeTabConfig = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+  const handleTabChange = (tab: AdminTab) => {
+    setActiveTab(tab);
+    setMobileMenuOpen(false);
+  };
+
   return (
-    <main className="min-h-screen" style={{ backgroundColor: '#0A0A0A', color: '#E8DDD4' }}>
+    <main className="min-h-screen overflow-x-hidden" style={{ backgroundColor: '#0A0A0A', color: '#E8DDD4' }}>
       <header
         className="sticky top-0 z-50"
         style={{ backgroundColor: 'rgba(10, 10, 10, 0.95)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #1A1A1A' }}
       >
-        <div className="max-w-[1180px] mx-auto px-5 md:px-8 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <Link to="/" className="font-serif text-lg transition-opacity duration-300 hover:opacity-70" style={{ color: '#F4A5AE' }}>
-              TGC
-            </Link>
-            <button
-              type="button"
-              onClick={onLogout}
-              disabled={logoutLoading}
-              className="font-sans text-xs uppercase flex items-center gap-2 transition-opacity duration-300 hover:opacity-100 disabled:opacity-50"
-              style={{ color: '#E8DDD4', opacity: 0.78, background: 'none', border: 'none', cursor: logoutLoading ? 'wait' : 'pointer', letterSpacing: '0.12em' }}
-            >
-              {logoutLoading ? <Loader2 className="animate-spin" size={14} /> : <LogOut size={14} />}
-              Log out
-            </button>
+        <div className="max-w-[1320px] mx-auto px-4 sm:px-5 md:px-8 py-3 md:py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen((open) => !open)}
+                aria-expanded={mobileMenuOpen}
+                aria-controls="admin-navigation"
+                className="lg:hidden flex items-center justify-center transition-all duration-300"
+                style={{
+                  width: 42,
+                  height: 42,
+                  color: '#E8DDD4',
+                  backgroundColor: '#141414',
+                  border: '1px solid #2A2A2A',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+                <span className="sr-only">{mobileMenuOpen ? 'Close admin menu' : 'Open admin menu'}</span>
+              </button>
+
+              <Link to="/" className="font-serif text-lg transition-opacity duration-300 hover:opacity-70 shrink-0" style={{ color: '#F4A5AE' }}>
+                TGC
+              </Link>
+
+              <div className="hidden sm:block min-w-0">
+                <p className="font-sans text-[10px] uppercase" style={{ color: '#6B8F71', letterSpacing: '0.14em' }}>
+                  Admin
+                </p>
+                <p className="font-sans text-sm truncate" style={{ color: '#E8DDD4', opacity: 0.72 }}>
+                  {activeTabConfig.label}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 sm:gap-3 min-w-0">
+              <div className="hidden md:block text-right min-w-0">
+                <p className="font-sans text-sm truncate" style={{ color: '#E8DDD4' }}>
+                  {adminName}
+                </p>
+                <p className="font-sans text-xs uppercase truncate" style={{ color: '#F4A5AE', letterSpacing: '0.1em' }}>
+                  {adminRole}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadDashboardData(true)}
+                disabled={dashboardLoading || refreshing}
+                className="font-sans text-xs uppercase px-3 sm:px-4 py-2.5 min-h-[42px] flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
+                style={{
+                  color: '#E8DDD4',
+                  backgroundColor: 'transparent',
+                  border: '1px solid #2A2A2A',
+                  borderRadius: 6,
+                  cursor: dashboardLoading || refreshing ? 'wait' : 'pointer',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                <RefreshCw className={refreshing ? 'animate-spin' : ''} size={14} />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onLogout}
+                disabled={logoutLoading}
+                className="font-sans text-xs uppercase px-3 sm:px-4 py-2.5 min-h-[42px] flex items-center gap-2 transition-all duration-300 disabled:opacity-50"
+                style={{
+                  color: '#E8DDD4',
+                  backgroundColor: '#141414',
+                  border: '1px solid #2A2A2A',
+                  borderRadius: 6,
+                  cursor: logoutLoading ? 'wait' : 'pointer',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                {logoutLoading ? <Loader2 className="animate-spin" size={14} /> : <LogOut size={14} />}
+                <span className="hidden sm:inline">Log out</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      <section className="max-w-[1180px] mx-auto px-5 md:px-8 py-8">
-        <div className="flex flex-col gap-8">
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-            <div>
-              <p className="font-sans text-xs uppercase" style={{ color: '#6B8F71', letterSpacing: '0.14em' }}>
-                Access confirmed
-              </p>
-              <h1 className="font-serif mt-3" style={{ fontSize: 34, lineHeight: 1.15, fontWeight: 600 }}>
-                Admin Dashboard
-              </h1>
-              <p className="font-sans text-sm mt-3" style={{ color: '#E8DDD4', opacity: 0.64, lineHeight: 1.6 }}>
-                View incoming messages, tattoo booking inquiries, and commission requests.
-              </p>
-            </div>
-
-            <div className="w-full lg:max-w-md" style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 18 }}>
-              <div className="flex items-start gap-3">
-                <div className="flex items-center justify-center" style={{ width: 38, height: 38, borderRadius: 6, backgroundColor: 'rgba(244, 165, 174, 0.12)', color: '#F4A5AE' }}>
+      <section className="max-w-[1320px] mx-auto px-4 sm:px-5 md:px-8 py-5 md:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-5 lg:gap-7">
+          <aside
+            id="admin-navigation"
+            className={`${mobileMenuOpen ? 'block' : 'hidden'} lg:block lg:sticky lg:top-24 lg:self-start`}
+          >
+            <div
+              className="flex flex-col gap-4"
+              style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#111111', padding: 16 }}
+            >
+              <div className="flex items-start gap-3 pb-4" style={{ borderBottom: '1px solid #1A1A1A' }}>
+                <div
+                  className="flex items-center justify-center shrink-0"
+                  style={{ width: 40, height: 40, borderRadius: 6, backgroundColor: 'rgba(244, 165, 174, 0.12)', color: '#F4A5AE' }}
+                >
                   <UserRound size={18} />
                 </div>
                 <div className="min-w-0">
-                  <p className="font-serif text-lg" style={{ lineHeight: 1.2 }}>
+                  <p className="font-serif text-lg truncate" style={{ lineHeight: 1.2 }}>
                     {adminName}
                   </p>
                   <p className="font-sans text-sm mt-1 break-words" style={{ opacity: 0.68 }}>
@@ -3105,68 +4539,122 @@ function AdminPortal({
                   </p>
                 </div>
               </div>
+
+              <nav className="flex flex-col gap-2" aria-label="Admin sections">
+                {tabs.map((tab) => {
+                  const selected = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => handleTabChange(tab.id)}
+                      aria-current={selected ? 'page' : undefined}
+                      className="font-sans text-xs uppercase w-full min-h-[46px] px-3 py-2.5 flex items-center gap-3 text-left transition-all duration-300"
+                      style={{
+                        color: selected ? '#F4A5AE' : '#E8DDD4',
+                        backgroundColor: selected ? 'rgba(244, 165, 174, 0.12)' : 'transparent',
+                        border: selected ? '1px solid rgba(244, 165, 174, 0.35)' : '1px solid transparent',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        letterSpacing: '0.1em',
+                      }}
+                    >
+                      <span className="shrink-0">{tab.icon}</span>
+                      <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+                      <span
+                        className="font-sans text-[11px] shrink-0"
+                        style={{
+                          color: selected ? '#0A0A0A' : '#E8DDD4',
+                          backgroundColor: selected ? '#F4A5AE' : '#1A1A1A',
+                          borderRadius: 999,
+                          minWidth: 28,
+                          padding: '3px 7px',
+                          textAlign: 'center',
+                          opacity: selected ? 1 : 0.8,
+                          letterSpacing: 0,
+                        }}
+                      >
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
             </div>
-          </div>
+          </aside>
 
-          {logoutError && <StatusMessage tone="error">{logoutError}</StatusMessage>}
+          <div className="min-w-0 flex flex-col gap-5">
+            <div className="flex flex-col gap-5 pb-5" style={{ borderBottom: '1px solid #1A1A1A' }}>
+              <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-sans text-xs uppercase" style={{ color: '#6B8F71', letterSpacing: '0.14em' }}>
+                    Access confirmed
+                  </p>
+                  <div className="mt-3 flex items-center gap-3 min-w-0">
+                    <span
+                      className="hidden sm:flex items-center justify-center shrink-0"
+                      style={{ width: 42, height: 42, borderRadius: 6, backgroundColor: 'rgba(244, 165, 174, 0.12)', color: '#F4A5AE' }}
+                    >
+                      {activeTabConfig.icon}
+                    </span>
+                    <div className="min-w-0">
+                      <h1 id="admin-section-heading" className="font-serif" style={{ fontSize: 34, lineHeight: 1.15, fontWeight: 600 }}>
+                        {activeTabConfig.label}
+                      </h1>
+                      <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.64, lineHeight: 1.6 }}>
+                        Manage messages, bookings, commissions, calendar events, and live gallery content.
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{ borderBottom: '1px solid #1A1A1A' }}>
-                {tabs.map((tab) => (
+                <div className="flex flex-wrap items-center gap-3">
+                  {refreshNotice && <StatusMessage tone="success">{refreshNotice}</StatusMessage>}
+                  {lastUpdated && (
+                    <p className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.52 }}>
+                      Updated {formatDate(lastUpdated.toISOString())}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {logoutError && <StatusMessage tone="error">{logoutError}</StatusMessage>}
+
+              <SiteStatusPanel
+                underDevelopmentEnabled={underDevelopmentEnabled}
+                saving={siteStatusSaving}
+                message={siteStatusMessage}
+                error={siteStatusError}
+                onToggle={() => void toggleUnderDevelopmentMode()}
+                onEditMessage={() => handleTabChange('content')}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { label: 'Post an update', helper: 'Homepage, shop, events, and studio notices', tab: 'content' as const, icon: <Megaphone size={16} /> },
+                  { label: 'Add an event', helper: 'Calendar items, bookings, and blocked time', tab: 'calendar' as const, icon: <Calendar size={16} /> },
+                  { label: 'Add a photo', helper: 'Gallery and page images', tab: 'gallery' as const, icon: <ImageIcon size={16} /> },
+                ].map((action) => (
                   <button
-                    key={tab.id}
+                    key={action.label}
                     type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className="font-sans text-xs uppercase px-4 py-3 flex items-center gap-2 whitespace-nowrap transition-all duration-300"
-                    style={{
-                      color: activeTab === tab.id ? '#F4A5AE' : '#E8DDD4',
-                      opacity: activeTab === tab.id ? 1 : 0.68,
-                      borderBottom: activeTab === tab.id ? '2px solid #F4A5AE' : '2px solid transparent',
-                      background: 'none',
-                      borderTop: 'none',
-                      borderLeft: 'none',
-                      borderRight: 'none',
-                      cursor: 'pointer',
-                      marginBottom: -1,
-                      letterSpacing: '0.1em',
-                    }}
+                    onClick={() => handleTabChange(action.tab)}
+                    className="text-left min-h-[78px] transition-all duration-300"
+                    style={{ color: '#E8DDD4', backgroundColor: '#111111', border: '1px solid #2A2A2A', borderRadius: 8, cursor: 'pointer', padding: 14 }}
                   >
-                    {tab.icon}
-                    {tab.label}
-                    <span style={{ color: '#E8DDD4', opacity: 0.62 }}>{tab.count}</span>
+                    <span className="font-sans text-xs uppercase inline-flex items-center gap-2" style={{ color: '#F4A5AE', letterSpacing: '0.1em' }}>
+                      {action.icon}
+                      {action.label}
+                    </span>
+                    <span className="font-sans text-xs block mt-2" style={{ color: '#E8DDD4', opacity: 0.58, lineHeight: 1.45 }}>
+                      {action.helper}
+                    </span>
                   </button>
                 ))}
               </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                {refreshNotice && <StatusMessage tone="success">{refreshNotice}</StatusMessage>}
-                {lastUpdated && (
-                  <p className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.52 }}>
-                    Updated {formatDate(lastUpdated.toISOString())}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void loadDashboardData(true)}
-                  disabled={dashboardLoading || refreshing}
-                  className="font-sans text-xs uppercase px-4 py-2.5 flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
-                  style={{
-                    color: '#E8DDD4',
-                    backgroundColor: 'transparent',
-                    border: '1px solid #2A2A2A',
-                    borderRadius: 6,
-                    cursor: dashboardLoading || refreshing ? 'wait' : 'pointer',
-                    letterSpacing: '0.1em',
-                  }}
-                >
-                  <RefreshCw className={refreshing ? 'animate-spin' : ''} size={14} />
-                  Refresh
-                </button>
-              </div>
             </div>
 
-            <div>
+            <div className="min-w-0">
               {activeTab === 'overview' && (
                 <OverviewSection data={dashboardData} loading={dashboardLoading} errors={dashboardErrors} />
               )}
@@ -3215,6 +4703,16 @@ function AdminPortal({
                   error={galleryError}
                   onCreate={createGalleryEntry}
                   onUpdate={updateGalleryEntry}
+                  onImportLegacy={importLegacyGalleryEntries}
+                />
+              )}
+              {activeTab === 'content' && (
+                <SiteContentManagerSection
+                  items={siteContentItems}
+                  loading={dashboardLoading}
+                  error={siteContentError}
+                  onCreate={createSiteContentEntry}
+                  onUpdate={updateSiteContentEntry}
                 />
               )}
             </div>
