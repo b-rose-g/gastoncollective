@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
+import { getFeaturedGalleryItems, type GalleryItem } from '@/lib/gallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -38,6 +39,7 @@ const FEATURES = [
 export default function FeaturedShowcase() {
   const sectionRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
+  const [featuredGallery, setFeaturedGallery] = useState<GalleryItem[]>([]);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
@@ -60,6 +62,25 @@ export default function FeaturedShowcase() {
       });
     }, sectionRef);
     return () => ctx.revert();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadFeaturedGallery() {
+      try {
+        const items = await getFeaturedGalleryItems(4);
+        if (active) setFeaturedGallery(items);
+      } catch {
+        if (active) setFeaturedGallery([]);
+      }
+    }
+
+    void loadFeaturedGallery();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
@@ -146,6 +167,44 @@ export default function FeaturedShowcase() {
             </div>
           </div>
         ))}
+
+        {featuredGallery.length > 0 && (
+          <div className="mt-24 md:mt-32">
+            <div className="text-center mb-10">
+              <span className="font-sans text-xs uppercase tracking-[0.2em]" style={{ color: '#BFA76A', opacity: 0.7 }}>
+                From The Gallery
+              </span>
+              <h3 className="font-serif mt-4" style={{ color: '#2D2D2D', fontSize: 'clamp(28px, 4vw, 44px)', fontWeight: 600, lineHeight: 1.1 }}>
+                RECENT FAVORITES
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {featuredGallery.map((item) => (
+                <article key={item.id} style={{ border: '1px solid #D8CFC3', borderRadius: 8, overflow: 'hidden', backgroundColor: '#F5F0E8' }}>
+                  <div style={{ aspectRatio: '4 / 5', backgroundColor: '#E0D5C5' }}>
+                    <img
+                      src={item.image_url ?? ''}
+                      alt={item.alt_text || item.title || 'Featured gallery image'}
+                      className="w-full h-full object-cover"
+                      decoding="async"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div style={{ padding: 16 }}>
+                    <p className="font-serif text-lg" style={{ color: '#2D2D2D', lineHeight: 1.2, fontWeight: 600 }}>
+                      {item.title || 'Gallery Feature'}
+                    </p>
+                    {item.description && (
+                      <p className="font-sans text-sm mt-2" style={{ color: '#5A5450', lineHeight: 1.55 }}>
+                        {item.description}
+                      </p>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

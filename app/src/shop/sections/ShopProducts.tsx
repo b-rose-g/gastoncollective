@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Mail } from 'lucide-react';
 import { prefersReducedMotion, revealImmediately, scrollBehavior } from '@/lib/motion';
+import { getGalleryItemsByLocation, galleryLabel, type GalleryItem } from '@/lib/gallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -25,10 +26,42 @@ export default function ShopProducts() {
   const gridRef = useRef<HTMLDivElement>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [activeCollection, setActiveCollection] = useState('all');
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
 
+  const galleryProducts = galleryItems.map((item) => ({
+    name: item.title || galleryLabel(item.category),
+    description: item.description || galleryLabel(item.category),
+    price: 'Inquire',
+    image: item.image_url || '',
+    collection: 'gallery',
+    accent: '#6BC4A8',
+    alt: item.alt_text || item.title || 'Shop gallery image',
+  }));
+
+  const staticProducts = PRODUCTS.map((product) => ({ ...product, alt: product.name }));
+  const visibleProducts = activeCollection === 'all' ? [...galleryProducts, ...staticProducts] : staticProducts;
   const filteredProducts = activeCollection === 'all'
-    ? PRODUCTS
-    : PRODUCTS.filter((p) => p.collection === activeCollection);
+    ? visibleProducts
+    : staticProducts.filter((p) => p.collection === activeCollection);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadGalleryItems() {
+      try {
+        const items = await getGalleryItemsByLocation('shop');
+        if (active) setGalleryItems(items);
+      } catch {
+        if (active) setGalleryItems([]);
+      }
+    }
+
+    void loadGalleryItems();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
@@ -43,7 +76,7 @@ export default function ShopProducts() {
       }
     }, sectionRef);
     return () => ctx.revert();
-  }, [activeCollection]);
+  }, [activeCollection, filteredProducts.length]);
 
   const scrollToInquiry = (productName: string) => {
     const el = document.querySelector('#contact');
@@ -104,7 +137,7 @@ export default function ShopProducts() {
                     backgroundColor: '#FFFFFF',
                   }}
                 >
-                  <img src={product.image} alt={product.name} width={851} height={851} decoding="async" className="w-full h-full object-cover transition-transform duration-700" style={{ transform: isHovered ? 'scale(1.05)' : 'scale(1)' }} loading="lazy" />
+                  <img src={product.image} alt={product.alt} width={851} height={851} decoding="async" className="w-full h-full object-cover transition-transform duration-700" style={{ transform: isHovered ? 'scale(1.05)' : 'scale(1)' }} loading="lazy" />
                   <div className="absolute inset-0 flex items-center justify-center transition-opacity duration-400" style={{ backgroundColor: 'rgba(90, 74, 110, 0.5)', opacity: isHovered ? 1 : 0 }}>
                     <button
                       type="button"

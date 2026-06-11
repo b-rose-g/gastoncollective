@@ -11,6 +11,7 @@ import {
   Clock,
   Edit3,
   ExternalLink,
+  Image as ImageIcon,
   Inbox,
   Loader2,
   LogIn,
@@ -22,11 +23,28 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Upload,
   UserRound,
   X,
 } from 'lucide-react';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
 import { supabase } from '@/lib/supabase';
+import {
+  createGalleryItem,
+  GALLERY_CATEGORIES,
+  GALLERY_DISPLAY_LOCATIONS,
+  GALLERY_IMAGE_ACCEPT,
+  galleryLabel,
+  getGalleryImageValidationError,
+  getGalleryItems,
+  updateGalleryItem,
+  uploadGalleryImage,
+  type GalleryCategory,
+  type GalleryDisplayLocation,
+  type GalleryItem,
+  type GalleryItemInput,
+  type GalleryItemUpdate,
+} from '@/lib/gallery';
 
 type AdminProfile = {
   id: string;
@@ -117,7 +135,7 @@ type DashboardData = {
 };
 
 type DashboardErrors = Partial<Record<keyof DashboardData, string>>;
-type AdminTab = 'overview' | 'messages' | 'bookings' | 'commissions' | 'calendar';
+type AdminTab = 'overview' | 'messages' | 'bookings' | 'commissions' | 'calendar' | 'gallery';
 type SubmissionKind = keyof DashboardData;
 type FilterValue = 'all' | 'pending' | 'contacted' | 'approved' | 'archived';
 type CalendarVisibilityFilter = 'all' | 'public' | 'private';
@@ -163,10 +181,32 @@ type CalendarEventFormValues = {
   sourceId?: number | string;
 };
 
+type GalleryFormValues = {
+  title: string;
+  description: string;
+  alt_text: string;
+  category: GalleryCategory;
+  display_location: GalleryDisplayLocation;
+  is_active: boolean;
+  is_featured: boolean;
+  display_order: string;
+};
+
 const emptyDashboardData: DashboardData = {
   messages: [],
   bookings: [],
   commissions: [],
+};
+
+const emptyGalleryFormValues: GalleryFormValues = {
+  title: '',
+  description: '',
+  alt_text: '',
+  category: 'tattoo_gallery',
+  display_location: 'gallery',
+  is_active: true,
+  is_featured: false,
+  display_order: '0',
 };
 
 const messageStatusOptions = [
@@ -950,6 +990,48 @@ function canCreateCalendarFromInquiry(status: string | null | undefined) {
   return ['approved', 'contacted'].includes(normalizeStatus(status));
 }
 
+function galleryFormFromItem(item: GalleryItem): GalleryFormValues {
+  return {
+    title: item.title ?? '',
+    description: item.description ?? '',
+    alt_text: item.alt_text ?? '',
+    category: GALLERY_CATEGORIES.includes(item.category as GalleryCategory) ? (item.category as GalleryCategory) : 'other',
+    display_location: GALLERY_DISPLAY_LOCATIONS.includes(item.display_location as GalleryDisplayLocation) ? (item.display_location as GalleryDisplayLocation) : 'gallery',
+    is_active: item.is_active === true,
+    is_featured: item.is_featured === true,
+    display_order: String(item.display_order ?? 0),
+  };
+}
+
+function galleryInputFromForm(values: GalleryFormValues, image: { url: string; path: string }): GalleryItemInput {
+  return {
+    title: values.title.trim(),
+    description: values.description.trim() || null,
+    alt_text: values.alt_text.trim() || values.title.trim(),
+    image_url: image.url,
+    image_path: image.path,
+    category: values.category,
+    display_location: values.display_location,
+    is_active: values.is_active,
+    is_featured: values.is_featured,
+    display_order: Number.parseInt(values.display_order, 10) || 0,
+  };
+}
+
+function galleryUpdateFromForm(values: GalleryFormValues, image?: { url: string; path: string }): GalleryItemUpdate {
+  return {
+    title: values.title.trim(),
+    description: values.description.trim() || null,
+    alt_text: values.alt_text.trim() || values.title.trim(),
+    ...(image ? { image_url: image.url, image_path: image.path } : {}),
+    category: values.category,
+    display_location: values.display_location,
+    is_active: values.is_active,
+    is_featured: values.is_featured,
+    display_order: Number.parseInt(values.display_order, 10) || 0,
+  };
+}
+
 function AdminLoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1430,6 +1512,325 @@ function CommissionsSection({
         </article>
       ))}
       </div>
+    </div>
+  );
+}
+
+function GalleryManagerSection({
+  items,
+  loading,
+  error,
+  onCreate,
+  onUpdate,
+}: {
+  items: GalleryItem[];
+  loading: boolean;
+  error: string;
+  onCreate: (input: GalleryItemInput) => Promise<void>;
+  onUpdate: (id: number | string, input: GalleryItemUpdate) => Promise<void>;
+}) {
+  const [values, setValues] = useState<GalleryFormValues>(emptyGalleryFormValues);
+  const [editingItem, setEditingItem] = useState<GalleryItem | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreviewUrl(editingItem?.image_url ?? '');
+      return;
+    }
+
+    const url = URL.createObjectURL(selectedFile);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [editingItem?.image_url, selectedFile]);
+
+  const updateValue = (key: keyof GalleryFormValues, value: string | boolean) => {
+    setValues((current) => ({ ...current, [key]: value }));
+  };
+
+  const resetForm = () => {
+    setValues(emptyGalleryFormValues);
+    setEditingItem(null);
+    setSelectedFile(null);
+    setPreviewUrl('');
+    setFormError('');
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    event.currentTarget.value = '';
+
+    const validationError = getGalleryImageValidationError(file);
+    if (validationError) {
+      setSelectedFile(null);
+      setFormError(validationError);
+      return;
+    }
+
+    setFormError('');
+    setSelectedFile(file);
+  };
+
+  const handleEdit = (item: GalleryItem) => {
+    setEditingItem(item);
+    setValues(galleryFormFromItem(item));
+    setSelectedFile(null);
+    setFormError('');
+    setNotice('');
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFormError('');
+    setNotice('');
+
+    if (!values.title.trim()) {
+      setFormError('Please add a title for this gallery item.');
+      return;
+    }
+
+    if (!editingItem && !selectedFile) {
+      setFormError('Please choose an image to upload.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const uploaded = selectedFile ? await uploadGalleryImage(selectedFile) : undefined;
+
+      if (editingItem) {
+        await onUpdate(editingItem.id, galleryUpdateFromForm(values, uploaded));
+        setNotice('Gallery item updated.');
+      } else if (uploaded) {
+        await onCreate(galleryInputFromForm(values, uploaded));
+        setNotice('Gallery item created.');
+      }
+
+      resetForm();
+    } catch (saveError) {
+      setFormError(saveError instanceof Error ? saveError.message : 'Gallery item could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleArchive = async (item: GalleryItem) => {
+    setFormError('');
+    setNotice('');
+    setSaving(true);
+    try {
+      await onUpdate(item.id, { is_active: false });
+      setNotice('Gallery item archived.');
+      if (editingItem?.id === item.id) resetForm();
+    } catch (archiveError) {
+      setFormError(archiveError instanceof Error ? archiveError.message : 'Gallery item could not be archived.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <InlineLoading label="Loading gallery items" />;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {error && <ErrorPanel message={error} />}
+
+      <section style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', padding: 20 }}>
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
+          <div>
+            <h2 className="font-serif text-2xl" style={{ color: '#E8DDD4', fontWeight: 600 }}>
+              {editingItem ? 'Edit Gallery Item' : 'Add Gallery Item'}
+            </h2>
+            <p className="font-sans text-sm mt-2" style={{ color: '#E8DDD4', opacity: 0.62, lineHeight: 1.55 }}>
+              Upload live site images, organize where they appear, and archive anything that should be hidden.
+            </p>
+          </div>
+          {editingItem && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="font-sans text-xs uppercase px-4 py-2.5 transition-all duration-300"
+              style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+            >
+              New item
+            </button>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+          <div>
+            <label
+              htmlFor="gallery-image"
+              className="min-h-[260px] flex flex-col items-center justify-center gap-3 text-center"
+              style={{ border: '1px dashed #2A2A2A', borderRadius: 8, backgroundColor: '#0A0A0A', cursor: 'pointer', overflow: 'hidden' }}
+            >
+              {previewUrl ? (
+                <img src={previewUrl} alt="Gallery preview" className="w-full h-full object-cover" style={{ minHeight: 260 }} />
+              ) : (
+                <>
+                  <Upload size={24} style={{ color: '#F4A5AE' }} />
+                  <span className="font-sans text-sm" style={{ color: '#E8DDD4', opacity: 0.72 }}>
+                    Upload JPG, PNG, or WebP
+                  </span>
+                  <span className="font-sans text-xs" style={{ color: '#E8DDD4', opacity: 0.45 }}>
+                    5 MB max
+                  </span>
+                </>
+              )}
+            </label>
+            <input id="gallery-image" type="file" accept={GALLERY_IMAGE_ACCEPT} onChange={handleFileChange} className="hidden" />
+          </div>
+
+          <div className="grid gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CalendarInput id="gallery-title" label="Title" value={values.title} onChange={(value) => updateValue('title', value)} required />
+              <CalendarInput id="gallery-alt" label="Alt text" value={values.alt_text} onChange={(value) => updateValue('alt_text', value)} placeholder="Describe the image for screen readers" />
+            </div>
+
+            <CalendarTextarea id="gallery-description" label="Description" value={values.description} onChange={(value) => updateValue('description', value)} rows={3} />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="gallery-category" className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+                  Category
+                </label>
+                <select
+                  id="gallery-category"
+                  value={values.category}
+                  onChange={(event) => updateValue('category', event.target.value as GalleryCategory)}
+                  className="w-full font-sans text-sm px-3 py-3 outline-none"
+                  style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+                >
+                  {GALLERY_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>{galleryLabel(category)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="gallery-location" className="font-sans text-xs uppercase mb-2 block" style={{ color: '#E8DDD4', opacity: 0.65, letterSpacing: '0.1em' }}>
+                  Display location
+                </label>
+                <select
+                  id="gallery-location"
+                  value={values.display_location}
+                  onChange={(event) => updateValue('display_location', event.target.value as GalleryDisplayLocation)}
+                  className="w-full font-sans text-sm px-3 py-3 outline-none"
+                  style={{ color: '#E8DDD4', backgroundColor: '#0A0A0A', border: '1px solid #2A2A2A', borderRadius: 6 }}
+                >
+                  {GALLERY_DISPLAY_LOCATIONS.map((location) => (
+                    <option key={location} value={location}>{galleryLabel(location)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <CalendarInput id="gallery-order" label="Display order" value={values.display_order} onChange={(value) => updateValue('display_order', value)} type="number" />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-5">
+              <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+                <input type="checkbox" checked={values.is_active} onChange={(event) => updateValue('is_active', event.target.checked)} />
+                Active
+              </label>
+              <label className="font-sans text-sm flex items-center gap-2" style={{ color: '#E8DDD4' }}>
+                <input type="checkbox" checked={values.is_featured} onChange={(event) => updateValue('is_featured', event.target.checked)} />
+                Featured
+              </label>
+            </div>
+
+            {formError && <StatusMessage tone="error">{formError}</StatusMessage>}
+            {notice && <StatusMessage tone="success">{notice}</StatusMessage>}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={saving}
+                className="font-sans text-xs uppercase px-5 py-3 inline-flex items-center gap-2 transition-all duration-300 disabled:opacity-60"
+                style={{ color: '#0A0A0A', backgroundColor: '#F4A5AE', border: '1px solid #F4A5AE', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+              >
+                {saving ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
+                {editingItem ? 'Save item' : 'Upload item'}
+              </button>
+              {editingItem && (
+                <button
+                  type="button"
+                  onClick={() => void handleArchive(editingItem)}
+                  disabled={saving}
+                  className="font-sans text-xs uppercase px-5 py-3 transition-all duration-300 disabled:opacity-60"
+                  style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+                >
+                  Archive
+                </button>
+              )}
+            </div>
+          </div>
+        </form>
+      </section>
+
+      {items.length === 0 ? (
+        <EmptyState>No gallery items yet.</EmptyState>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {items.map((item) => (
+            <article key={item.id} style={{ border: '1px solid #1A1A1A', borderRadius: 8, backgroundColor: '#141414', overflow: 'hidden' }}>
+              <div style={{ aspectRatio: '4 / 3', backgroundColor: '#0A0A0A' }}>
+                {item.image_url ? (
+                  <img src={item.image_url} alt={item.alt_text || item.title || 'Gallery item'} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                ) : (
+                  <div className="h-full flex items-center justify-center" style={{ color: '#E8DDD4', opacity: 0.35 }}>
+                    <ImageIcon size={28} />
+                  </div>
+                )}
+              </div>
+              <div style={{ padding: 16 }}>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="font-sans text-xs uppercase px-2.5 py-1" style={{ color: item.is_active ? '#6B8F71' : '#C4A265', border: `1px solid ${item.is_active ? '#6B8F71' : '#C4A265'}`, borderRadius: 4, letterSpacing: '0.08em' }}>
+                    {item.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                  {item.is_featured && (
+                    <span className="font-sans text-xs uppercase px-2.5 py-1" style={{ color: '#F4A5AE', border: '1px solid #F4A5AE', borderRadius: 4, letterSpacing: '0.08em' }}>
+                      Featured
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-serif text-lg" style={{ color: '#E8DDD4', fontWeight: 600 }}>{item.title || 'Untitled'}</h3>
+                <p className="font-sans text-xs uppercase mt-2" style={{ color: '#F4A5AE', letterSpacing: '0.1em' }}>
+                  {galleryLabel(item.category)} / {galleryLabel(item.display_location)}
+                </p>
+                {item.description && (
+                  <p className="font-sans text-sm mt-3" style={{ color: '#E8DDD4', opacity: 0.68, lineHeight: 1.55 }}>{item.description}</p>
+                )}
+                <div className="flex flex-wrap gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => handleEdit(item)}
+                    className="font-sans text-xs uppercase px-3 py-2 inline-flex items-center gap-2 transition-all duration-300"
+                    style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: 'pointer', letterSpacing: '0.1em' }}
+                  >
+                    <Edit3 size={14} />
+                    Edit
+                  </button>
+                  {item.is_active && (
+                    <button
+                      type="button"
+                      onClick={() => void handleArchive(item)}
+                      disabled={saving}
+                      className="font-sans text-xs uppercase px-3 py-2 transition-all duration-300 disabled:opacity-60"
+                      style={{ color: '#E8DDD4', backgroundColor: 'transparent', border: '1px solid #2A2A2A', borderRadius: 6, cursor: saving ? 'wait' : 'pointer', letterSpacing: '0.1em' }}
+                    >
+                      Archive
+                    </button>
+                  )}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2419,6 +2820,8 @@ function AdminPortal({
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calendarError, setCalendarError] = useState('');
   const [calendarDraft, setCalendarDraft] = useState<CalendarEventFormValues | null>(null);
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+  const [galleryError, setGalleryError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -2435,11 +2838,12 @@ function AdminPortal({
       setDashboardLoading(true);
     }
 
-    const [messagesResult, bookingsResult, commissionsResult, calendarResult] = await Promise.all([
+    const [messagesResult, bookingsResult, commissionsResult, calendarResult, galleryResult] = await Promise.all([
       supabase.from('contact_messages').select('*').order('created_at', { ascending: false }),
       supabase.from('booking_inquiries').select('*').order('created_at', { ascending: false }),
       supabase.from('commission_inquiries').select('*').order('created_at', { ascending: false }),
       supabase.from('calendar_events').select('*').order('start_date', { ascending: true }).order('start_time', { ascending: true }),
+      getGalleryItems({ activeOnly: false }).then((data) => ({ data, error: null })).catch((error: Error) => ({ data: null, error })),
     ]);
 
     const nextErrors: DashboardErrors = {};
@@ -2447,6 +2851,7 @@ function AdminPortal({
     if (bookingsResult.error) nextErrors.bookings = `Unable to load tattoo bookings: ${bookingsResult.error.message}`;
     if (commissionsResult.error) nextErrors.commissions = `Unable to load commission requests: ${commissionsResult.error.message}`;
     setCalendarError(calendarResult.error ? `Unable to load calendar events: ${calendarResult.error.message}` : '');
+    setGalleryError(galleryResult.error ? `Unable to load gallery items: ${galleryResult.error.message}` : '');
 
     setDashboardData((current) => ({
       messages: messagesResult.error ? current.messages : ((messagesResult.data ?? []) as ContactMessage[]),
@@ -2456,11 +2861,14 @@ function AdminPortal({
     if (!calendarResult.error) {
       setCalendarEvents((calendarResult.data ?? []) as CalendarEvent[]);
     }
+    if (!galleryResult.error) {
+      setGalleryItems((galleryResult.data ?? []) as GalleryItem[]);
+    }
     setDashboardErrors(nextErrors);
     setDashboardLoading(false);
     setRefreshing(false);
 
-    if (Object.keys(nextErrors).length === 0 && !calendarResult.error) {
+    if (Object.keys(nextErrors).length === 0 && !calendarResult.error && !galleryResult.error) {
       setLastUpdated(new Date());
       setRefreshNotice(refresh ? 'Dashboard refreshed.' : '');
     }
@@ -2589,6 +2997,18 @@ function AdminPortal({
     setActiveTab('calendar');
   }, []);
 
+  const createGalleryEntry = useCallback(async (input: GalleryItemInput) => {
+    const item = await createGalleryItem(input);
+    setGalleryItems((current) => [item, ...current].sort((left, right) => (left.display_order ?? 0) - (right.display_order ?? 0)));
+  }, []);
+
+  const updateGalleryEntry = useCallback(async (id: number | string, input: GalleryItemUpdate) => {
+    const item = await updateGalleryItem(id, input);
+    setGalleryItems((current) => current
+      .map((currentItem) => (currentItem.id === id ? item : currentItem))
+      .sort((left, right) => (left.display_order ?? 0) - (right.display_order ?? 0)));
+  }, []);
+
   const tabs = [
     {
       id: 'overview' as const,
@@ -2619,6 +3039,12 @@ function AdminPortal({
       label: 'Calendar',
       icon: <Calendar size={16} />,
       count: calendarEvents.length,
+    },
+    {
+      id: 'gallery' as const,
+      label: 'Gallery Manager',
+      icon: <ImageIcon size={16} />,
+      count: galleryItems.length,
     },
   ];
 
@@ -2780,6 +3206,15 @@ function AdminPortal({
                   onCreate={createCalendarEvent}
                   onUpdate={updateCalendarEvent}
                   onDelete={deleteCalendarEvent}
+                />
+              )}
+              {activeTab === 'gallery' && (
+                <GalleryManagerSection
+                  items={galleryItems}
+                  loading={dashboardLoading}
+                  error={galleryError}
+                  onCreate={createGalleryEntry}
+                  onUpdate={updateGalleryEntry}
                 />
               )}
             </div>

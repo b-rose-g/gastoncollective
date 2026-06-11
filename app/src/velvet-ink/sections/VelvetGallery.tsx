@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { X } from 'lucide-react';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
+import { getGalleryItemsByLocation, type GalleryItem } from '@/lib/gallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -10,6 +11,7 @@ type GalleryImage = {
   src: string;
   title: string;
   category: 'tattoo' | 'piercing';
+  alt?: string;
   width: number;
   height: number;
   previewCrop?: {
@@ -56,8 +58,43 @@ export default function VelvetGallery() {
   const gridRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState<'all' | 'tattoo' | 'piercing'>('all');
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
 
-  const filteredImages = filter === 'all' ? ALL_IMAGES : ALL_IMAGES.filter((img) => img.category === filter);
+  const galleryImages = useMemo<GalleryImage[]>(() => {
+    if (galleryItems.length === 0) return ALL_IMAGES;
+
+    return galleryItems
+      .filter((item) => item.image_url)
+      .map((item) => ({
+        src: item.image_url || '',
+        title: item.title || 'Gallery piece',
+        alt: item.alt_text || item.title || 'Velvet Ink gallery image',
+        category: 'tattoo',
+        width: 900,
+        height: 1200,
+      }));
+  }, [galleryItems]);
+
+  const filteredImages = filter === 'all' ? galleryImages : galleryImages.filter((img) => img.category === filter);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadGalleryItems() {
+      try {
+        const items = await getGalleryItemsByLocation('velvet_ink');
+        if (active) setGalleryItems(items);
+      } catch {
+        if (active) setGalleryItems([]);
+      }
+    }
+
+    void loadGalleryItems();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
@@ -92,7 +129,7 @@ export default function VelvetGallery() {
     }, sectionRef);
 
     return () => ctx.revert();
-  }, [filter]);
+  }, [filter, filteredImages.length]);
 
   useEffect(() => {
     if (lightbox === null) return;
@@ -100,12 +137,12 @@ export default function VelvetGallery() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setLightbox(null);
       if (event.key === 'ArrowLeft') setLightbox((current) => current === null ? current : Math.max(0, current - 1));
-      if (event.key === 'ArrowRight') setLightbox((current) => current === null ? current : Math.min(ALL_IMAGES.length - 1, current + 1));
+      if (event.key === 'ArrowRight') setLightbox((current) => current === null ? current : Math.min(galleryImages.length - 1, current + 1));
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [lightbox]);
+  }, [galleryImages.length, lightbox]);
 
   return (
     <section
@@ -171,11 +208,11 @@ export default function VelvetGallery() {
               key={`${filter}-${i}`}
               className="gallery-item relative overflow-hidden group cursor-pointer mb-3 opacity-0 break-inside-avoid"
               style={img.previewCrop ? { aspectRatio: img.previewCrop.aspectRatio } : undefined}
-              onClick={() => setLightbox(ALL_IMAGES.indexOf(img))}
+              onClick={() => setLightbox(galleryImages.indexOf(img))}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  setLightbox(ALL_IMAGES.indexOf(img));
+                  setLightbox(galleryImages.indexOf(img));
                 }
               }}
               role="button"
@@ -185,7 +222,7 @@ export default function VelvetGallery() {
             >
               <img
                 src={img.src}
-                alt={img.title}
+                alt={img.alt || img.title}
                 width={img.width}
                 height={img.height}
                 decoding="async"
@@ -234,14 +271,14 @@ export default function VelvetGallery() {
       </div>
 
       {/* Lightbox */}
-      {lightbox !== null && (
+      {lightbox !== null && galleryImages[lightbox] && (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-12"
           style={{ backgroundColor: 'rgba(10, 10, 10, 0.95)' }}
           onClick={() => setLightbox(null)}
           role="dialog"
           aria-modal="true"
-          aria-label={`${ALL_IMAGES[lightbox].title} image preview`}
+          aria-label={`${galleryImages[lightbox].title} image preview`}
         >
           <button
             type="button"
@@ -259,20 +296,20 @@ export default function VelvetGallery() {
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={ALL_IMAGES[lightbox].src}
-              alt={ALL_IMAGES[lightbox].title}
-              width={ALL_IMAGES[lightbox].width}
-              height={ALL_IMAGES[lightbox].height}
+              src={galleryImages[lightbox].src}
+              alt={galleryImages[lightbox].alt || galleryImages[lightbox].title}
+              width={galleryImages[lightbox].width}
+              height={galleryImages[lightbox].height}
               decoding="async"
               className="max-h-[75vh] w-auto object-contain"
               style={{ boxShadow: '0 0 60px rgba(209, 74, 110, 0.15)' }}
             />
             <div className="mt-4 text-center">
               <span className="font-sans text-xs uppercase tracking-[0.15em]" style={{ color: '#D14A6E' }}>
-                {ALL_IMAGES[lightbox].category}
+                {galleryImages[lightbox].category}
               </span>
               <h3 className="font-serif text-lg mt-1" style={{ color: '#E8DDD4' }}>
-                {ALL_IMAGES[lightbox].title}
+                {galleryImages[lightbox].title}
               </h3>
             </div>
           </div>
@@ -290,7 +327,7 @@ export default function VelvetGallery() {
               ←
             </button>
           )}
-          {lightbox < ALL_IMAGES.length - 1 && (
+          {lightbox < galleryImages.length - 1 && (
             <button
               type="button"
               aria-label="Show next gallery image"

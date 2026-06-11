@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { ExternalLink } from 'lucide-react';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
+import { getGalleryItemsByLocation, type GalleryItem } from '@/lib/gallery';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -11,6 +12,7 @@ export default function WrittenBooks() {
   const headingRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
@@ -39,6 +41,25 @@ export default function WrittenBooks() {
     }, sectionRef);
 
     return () => ctx.revert();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadGalleryItems() {
+      try {
+        const items = await getGalleryItemsByLocation('written_word');
+        if (active) setGalleryItems(items);
+      } catch {
+        if (active) setGalleryItems([]);
+      }
+    }
+
+    void loadGalleryItems();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (
@@ -224,6 +245,35 @@ export default function WrittenBooks() {
             </a>
           </div>
         </div>
+
+        {galleryItems.length > 0 && (
+          <div className="mt-20">
+            <h3 className="font-serif text-center mb-8" style={{ color: '#3B2317', fontSize: 30, fontWeight: 600 }}>
+              Written Word Gallery
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {galleryItems.map((item) => (
+                <article key={item.id} style={{ border: '1px solid rgba(166, 123, 91, 0.22)', borderRadius: 8, overflow: 'hidden', backgroundColor: '#FAF8F4' }}>
+                  <div style={{ aspectRatio: '4 / 3', backgroundColor: '#E4D8CC' }}>
+                    <img
+                      src={item.image_url ?? ''}
+                      alt={item.alt_text || item.title || 'Written Word gallery image'}
+                      className="w-full h-full object-cover"
+                      decoding="async"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div style={{ padding: 16 }}>
+                    <p className="font-serif text-lg" style={{ color: '#3B2317', fontWeight: 600 }}>{item.title || 'Gallery Item'}</p>
+                    {item.description && (
+                      <p className="font-sans text-sm mt-2" style={{ color: '#5A4D42', lineHeight: 1.55 }}>{item.description}</p>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
