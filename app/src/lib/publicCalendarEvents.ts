@@ -28,7 +28,7 @@ const publicCalendarColumns = [
   'status',
 ].join(',');
 
-const publicCalendarStatuses = ['scheduled', 'confirmed', 'published'];
+const publicCalendarStatuses = ['scheduled', 'confirmed', 'rescheduled', 'published'];
 
 export function dateKey(date: Date) {
   const year = date.getFullYear();
@@ -102,14 +102,14 @@ export function publicEventDateTime(event: PublicCalendarEvent) {
   const endDate = event.end_date && event.end_date !== event.start_date ? publicFormatDate(event.end_date) : '';
 
   if (event.all_day) {
-    return endDate ? `${startDate} - ${endDate} · All day` : `${startDate} · All day`;
+    return endDate ? `${startDate} - ${endDate} | All day` : `${startDate} | All day`;
   }
 
   const startTime = publicFormatTime(event.start_time);
   const endTime = publicFormatTime(event.end_time);
   const timeText = startTime && endTime ? `${startTime} - ${endTime}` : startTime;
 
-  if (endDate && timeText) return `${startDate} - ${endDate} · ${timeText}`;
-  if (timeText) return `${startDate} · ${timeText}`;
+  if (endDate && timeText) return `${startDate} - ${endDate} | ${timeText}`;
+  if (timeText) return `${startDate} | ${timeText}`;
   return endDate ? `${startDate} - ${endDate}` : startDate;
 }

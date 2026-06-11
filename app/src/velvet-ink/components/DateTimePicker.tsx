@@ -7,13 +7,11 @@ import {
   type UnavailableBookingSlot,
 } from '@/lib/bookingAvailability';
 import {
-  BLOCKED_DATES,
   BLOCK_SUNDAYS,
   BLOCK_SATURDAYS,
   MAX_BOOKING_DAYS_AHEAD,
   MIN_BOOKING_DAYS_AHEAD,
   TIME_SLOTS,
-  BLOCKED_TIME_SLOTS,
 } from '../config/blockedDates';
 
 interface TimeSlot {
@@ -90,7 +88,6 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
 
     if (date < minDate || date > maxDate) return true;
 
-    if (BLOCKED_DATES.includes(key)) return true;
     if (dateHasAllDayBlock(unavailableSlotsByDate[key] ?? [])) return true;
 
     const day = date.getDay();
@@ -106,9 +103,7 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
   };
 
   const isTimeBlocked = (dateKey: string, time: string): boolean => {
-    const staticallyBlocked = (BLOCKED_TIME_SLOTS[dateKey] || []).includes(time);
-    const calendarBlocked = bookingTimeOverlapsUnavailableSlot(time, unavailableSlotsByDate[dateKey] ?? []);
-    return staticallyBlocked || calendarBlocked;
+    return bookingTimeOverlapsUnavailableSlot(time, unavailableSlotsByDate[dateKey] ?? []);
   };
 
   useEffect(() => {
@@ -129,8 +124,7 @@ export default function DateTimePicker({ selections, onChange }: DateTimePickerP
     const unavailableSlots = await loadUnavailableSlots(selectedDate);
     if (!unavailableSlots) return;
 
-    const staticBlock = (BLOCKED_TIME_SLOTS[selectedDate] || []).includes(time);
-    if (staticBlock || bookingTimeOverlapsUnavailableSlot(time, unavailableSlots)) {
+    if (bookingTimeOverlapsUnavailableSlot(time, unavailableSlots)) {
       setAvailabilityError('That time is no longer available. Please choose another time.');
       return;
     }

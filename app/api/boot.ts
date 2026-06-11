@@ -12,7 +12,7 @@ import { recordEvent } from "./lib/monitoring";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
-const appRoutes = new Set(["/", "/velvet-ink", "/written-word", "/shop", "/admin", "/privacy", "/terms"]);
+const appRoutes = new Set(["/", "/velvet-ink", "/written-word", "/shop", "/events", "/admin", "/privacy", "/terms"]);
 const imageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 function getContentType(filePath: string): string {
