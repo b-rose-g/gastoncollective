@@ -5,12 +5,12 @@ import FooterSection from '@/sections/FooterSection';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
 import {
   dateKey,
-  loadPublicCalendarEvents,
+  getPublicCalendarEvents,
   publicEventDateTime,
   publicEventTypeLabel,
   publicStatusLabel,
   type PublicCalendarEvent,
-} from '@/lib/publicCalendarEvents';
+} from '@/lib/publicEvents';
 
 export default function EventsPage() {
   usePageMetadata(routeMetadata.events);
@@ -29,10 +29,10 @@ export default function EventsPage() {
     setError('');
 
     try {
-      const publicEvents = await loadPublicCalendarEvents({ fromDate: dateKey(new Date()) });
+      const publicEvents = await getPublicCalendarEvents({ fromDate: dateKey(new Date()) });
       setEvents(publicEvents);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load events.');
+    } catch {
+      setError('Events could not be loaded right now. Please check back soon.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -104,10 +104,7 @@ export default function EventsPage() {
             <div className="text-center py-20" style={{ border: '1px solid #E0D5C5', borderRadius: 8, backgroundColor: '#FAF7F0' }}>
               <CalendarDays size={34} style={{ color: '#A89B8C', margin: '0 auto' }} />
               <p className="font-serif text-2xl mt-5" style={{ color: '#2D2D2D' }}>
-                No public events are scheduled yet.
-              </p>
-              <p className="font-sans text-sm mt-2" style={{ color: '#6B6560' }}>
-                Check back soon for signings, readings, pop-ups, and shop drops.
+                No upcoming events yet.
               </p>
             </div>
           ) : (

@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom';
 import { CalendarDays, ExternalLink, Loader2, MapPin } from 'lucide-react';
 import {
   dateKey,
-  loadPublicCalendarEvents,
+  getPublicCalendarEvents,
   publicEventDateTime,
   publicEventTypeLabel,
   type PublicCalendarEvent,
-} from '@/lib/publicCalendarEvents';
+} from '@/lib/publicEvents';
 
 export default function UpcomingEventsSection() {
   const [events, setEvents] = useState<PublicCalendarEvent[]>([]);
@@ -19,10 +19,10 @@ export default function UpcomingEventsSection() {
 
     async function loadEvents() {
       try {
-        const publicEvents = await loadPublicCalendarEvents({ fromDate: dateKey(new Date()), limit: 3 });
+        const publicEvents = await getPublicCalendarEvents({ fromDate: dateKey(new Date()), limit: 3 });
         if (active) setEvents(publicEvents);
-      } catch (loadError) {
-        if (active) setError(loadError instanceof Error ? loadError.message : 'Unable to load events.');
+      } catch {
+        if (active) setError('Events could not be loaded right now. Please check back soon.');
       } finally {
         if (active) setLoading(false);
       }
@@ -60,15 +60,12 @@ export default function UpcomingEventsSection() {
           </div>
         ) : error ? (
           <p className="font-sans text-sm" style={{ color: '#7B3B4F' }}>
-            Public events could not be loaded right now.
+            {error}
           </p>
         ) : events.length === 0 ? (
           <div style={{ border: '1px solid #E0D5C5', borderRadius: 8, backgroundColor: '#FAF7F0', padding: 24 }}>
             <p className="font-serif text-2xl" style={{ color: '#2D2D2D' }}>
-              No public events are scheduled yet.
-            </p>
-            <p className="font-sans text-sm mt-2" style={{ color: '#6B6560' }}>
-              Check back soon for signings, readings, pop-ups, and shop drops.
+              No upcoming events yet.
             </p>
           </div>
         ) : (

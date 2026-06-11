@@ -1597,6 +1597,10 @@ function CalendarEventForm({
   const linkedInquiryLabel = values.inquiry_type && values.inquiry_id ? `${statusLabel(values.inquiry_type)} #${values.inquiry_id}` : '';
 
   const updateValue = (key: keyof CalendarEventFormValues, value: string | boolean) => {
+    if (key === 'event_type' && typeof value === 'string') {
+      setExpanded((current) => ({ ...current, publicSettings: publicEventTypeValues.has(value) }));
+    }
+
     setValues((current) => {
       if (key === 'event_type' && typeof value === 'string') {
         const nextPublicFriendly = publicEventTypeValues.has(value);
@@ -1795,7 +1799,7 @@ function CalendarEventForm({
       </div>
 
       <p className="font-sans text-xs mt-2" style={{ color: '#E8DDD4', opacity: 0.52, lineHeight: 1.5 }}>
-        Turn this on when the event uses time that should not be offered on the tattoo booking form.
+        Use this when the event makes the artist unavailable for tattoo bookings.
       </p>
 
       {multiDay && (
@@ -1987,8 +1991,8 @@ function CalendarEventForm({
         {publicFriendlyType && (
           <CalendarOptionalSection
             id="publicSettings"
-            title="Public Event Settings"
-            helper="Only public-safe event types can be published to the live site."
+            title="Public Calendar"
+            helper="Public events appear on the live Gaston Collective calendar. Private appointments stay hidden."
             open={Boolean(expanded.publicSettings)}
             onToggle={toggleSection}
           >
@@ -1998,7 +2002,7 @@ function CalendarEventForm({
                 checked={values.is_public}
                 onChange={(event) => updateValue('is_public', event.target.checked)}
               />
-              Show this event publicly later
+              Show on public calendar
             </label>
           </CalendarOptionalSection>
         )}
