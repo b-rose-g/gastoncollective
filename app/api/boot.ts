@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { appRouter } from "./router";
 import { createContext } from "./context";
 import { env } from "./lib/env";
+import { testLuluTokenRequestFromEnv } from "./lib/lulu";
 import { recordEvent } from "./lib/monitoring";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
@@ -47,6 +48,14 @@ app.use("*", async (c, next) => {
 app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 
 app.get("/api/health", (c) => c.json({ status: "ok", checkedAt: new Date().toISOString() }));
+
+const testLuluToken = async (c: { json: (value: { success: boolean }) => Response | Promise<Response> }) => {
+  const success = await testLuluTokenRequestFromEnv();
+  return c.json({ success });
+};
+
+app.post("/api/lulu/test-token", testLuluToken);
+app.post("/api/lulu/test-token/", testLuluToken);
 
 app.post("/api/uploads", async (c) => {
   try {

@@ -1,4 +1,9 @@
-import "dotenv/config";
+import { config as loadDotenv } from "dotenv";
+
+loadDotenv();
+if (process.env.NODE_ENV !== "production") {
+  loadDotenv({ path: ".dev.vars", override: false });
+}
 
 function required(name: string): string {
   const value = process.env[name];

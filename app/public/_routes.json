@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "include": [
+    "/api/lulu/*",
+    "/api/book-purchases/*"
+  ],
+  "exclude": [
+    "/assets/*",
+    "/images/*"
+  ]
+}

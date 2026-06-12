@@ -1,11 +1,32 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { ExternalLink } from 'lucide-react';
-import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
+import { Mail } from 'lucide-react';
+import { prefersReducedMotion, revealImmediately, scrollBehavior } from '@/lib/motion';
 import { getGalleryItemsByLocation, type GalleryItem } from '@/lib/gallery';
 
 gsap.registerPlugin(ScrollTrigger);
+
+type PublicationStatus = 'available' | 'coming_soon';
+
+type FeaturedBook = {
+  title: string;
+  author: string;
+  publication_status: PublicationStatus;
+  button_url?: string;
+  external_url?: string;
+};
+
+const featuredBook: FeaturedBook = {
+  title: 'Reach For The Stars',
+  author: 'Kimberlin Gaston',
+  publication_status: 'available',
+  button_url: '',
+  external_url: '',
+};
+
+const bookCheckoutEnabled = import.meta.env.VITE_ENABLE_BOOK_CHECKOUT === 'true';
+const requestCopyEmail = 'mailto:hello@gastoncollective.com?subject=Reach%20For%20The%20Stars%20Copy%20Request';
 
 export default function WrittenBooks() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -13,6 +34,7 @@ export default function WrittenBooks() {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+  const action = useMemo(() => getBookAction(), []);
 
   useEffect(() => {
     if (prefersReducedMotion()) {
@@ -120,7 +142,7 @@ export default function WrittenBooks() {
                 loading="lazy"
               />
 
-              {/* Hover overlay with purchase button */}
+              {/* Hover overlay with book request button */}
               <div
                 className="absolute inset-0 flex items-center justify-center transition-opacity duration-400"
                 style={{
@@ -128,16 +150,7 @@ export default function WrittenBooks() {
                   opacity: isHovered ? 1 : 0,
                 }}
               >
-                <a
-                  href="https://www.lulu.com/shop/kimberlin-gaston/reach-for-the-stars/paperback/product-956dw44.html?page=1&pageSize=4"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-sans text-xs uppercase tracking-[0.2em] px-8 py-4 border flex items-center gap-3 transition-all duration-300 hover:bg-[#A67B5B] hover:text-[#FAF8F4] hover:border-[#A67B5B]"
-                  style={{ color: '#A67B5B', borderColor: '#A67B5B', textDecoration: 'none' }}
-                  data-cursor-hover
-                >
-                  Purchase <ExternalLink size={16} />
-                </a>
+                <BookAction action={action} compact />
               </div>
             </div>
 
@@ -171,7 +184,7 @@ export default function WrittenBooks() {
                 lineHeight: 1.15,
               }}
             >
-              Reach For The Stars
+              {featuredBook.title}
             </h3>
 
             <p
@@ -182,7 +195,7 @@ export default function WrittenBooks() {
                 lineHeight: 1.3,
               }}
             >
-              by Kimberlin Gaston
+              by {featuredBook.author}
             </p>
 
             <div
@@ -228,21 +241,14 @@ export default function WrittenBooks() {
               This book is perfect for anyone who wants to take care of their mind and soul in a creative, approachable way. Wherever you are in your journey, you deserve to reach for the stars—and this book is here to help you every step of the way.
             </p>
 
-            <a
-              href="https://www.lulu.com/shop/kimberlin-gaston/reach-for-the-stars/paperback/product-956dw44.html?page=1&pageSize=4"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-3 mt-4 font-sans text-xs uppercase tracking-[0.2em] px-10 py-4 border transition-all duration-300 hover:bg-[#A67B5B] hover:text-[#FAF8F4] hover:border-[#A67B5B]"
-              style={{
-                color: '#A67B5B',
-                borderColor: '#A67B5B',
-                textDecoration: 'none',
-                width: 'fit-content',
-              }}
-              data-cursor-hover
-            >
-              Buy on Lulu <ExternalLink size={14} />
-            </a>
+            <div className="mt-4 flex flex-col gap-3">
+              <BookAction action={action} />
+              {action.kind === 'request' && (
+                <p className="font-sans text-sm" style={{ color: '#6B5B4E', lineHeight: 1.6 }}>
+                  Online checkout is coming soon. Please reach out to request a copy.
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -275,6 +281,68 @@ export default function WrittenBooks() {
           </div>
         )}
       </div>
+
     </section>
   );
+}
+
+type BookActionState =
+  | { kind: 'link'; label: string; href: string }
+  | { kind: 'request'; label: string }
+  | { kind: 'disabled'; label: string };
+
+function getBookAction(): BookActionState {
+  const href = featuredBook.button_url || featuredBook.external_url;
+  if (href) return { kind: 'link', label: 'Purchase Now', href };
+  if (featuredBook.publication_status === 'coming_soon') return { kind: 'disabled', label: 'Coming Soon' };
+  if (bookCheckoutEnabled) return { kind: 'request', label: 'Request Copy' };
+  return { kind: 'request', label: 'Request Copy' };
+}
+
+function BookAction({ action, compact = false }: { action: BookActionState; compact?: boolean }) {
+  const className = compact
+    ? 'font-sans text-xs uppercase tracking-[0.2em] px-8 py-4 border inline-flex items-center gap-3 transition-all duration-300 hover:bg-[#A67B5B] hover:text-[#FAF8F4] hover:border-[#A67B5B]'
+    : 'inline-flex items-center gap-3 font-sans text-xs uppercase tracking-[0.2em] px-10 py-4 border transition-all duration-300 hover:bg-[#A67B5B] hover:text-[#FAF8F4] hover:border-[#A67B5B]';
+  const style = compact
+    ? { color: '#A67B5B', borderColor: '#A67B5B', backgroundColor: 'rgba(250, 248, 244, 0.94)' }
+    : { color: '#A67B5B', borderColor: '#A67B5B', width: 'fit-content', backgroundColor: 'transparent' };
+
+  if (action.kind === 'link') {
+    return (
+      <a href={action.href} className={className} style={{ ...style, textDecoration: 'none' }} data-cursor-hover>
+        {action.label}
+      </a>
+    );
+  }
+
+  if (action.kind === 'disabled') {
+    return (
+      <button type="button" disabled className={className} style={{ ...style, cursor: 'not-allowed', opacity: 0.62 }} data-cursor-hover>
+        {action.label}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={requestCopy}
+      className={className}
+      style={{ ...style, cursor: 'pointer' }}
+      data-cursor-hover
+    >
+      {action.label}
+      <Mail size={14} />
+    </button>
+  );
+}
+
+function requestCopy() {
+  const contactSection = document.querySelector('#contact');
+  if (contactSection) {
+    contactSection.scrollIntoView({ behavior: scrollBehavior() });
+    return;
+  }
+
+  window.location.href = requestCopyEmail;
 }
