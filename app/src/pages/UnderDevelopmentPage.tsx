@@ -1,4 +1,5 @@
 import { ExternalLink } from 'lucide-react';
+import { normalizeGastonContactMailto } from '@/lib/contact';
 import { UNDER_DEVELOPMENT_DEFAULT_CONTENT, type SiteContentItem } from '@/lib/siteContent';
 import { routeMetadata, usePageMetadata } from '@/lib/seo';
 
@@ -13,7 +14,7 @@ export default function UnderDevelopmentPage({ content }: UnderDevelopmentPagePr
   const subtitle = content?.subtitle || UNDER_DEVELOPMENT_DEFAULT_CONTENT.subtitle;
   const body = content?.body || UNDER_DEVELOPMENT_DEFAULT_CONTENT.body;
   const buttonLabel = content?.button_label || UNDER_DEVELOPMENT_DEFAULT_CONTENT.button_label;
-  const buttonUrl = content?.button_url || UNDER_DEVELOPMENT_DEFAULT_CONTENT.button_url;
+  const buttonUrl = normalizeGastonContactMailto(content?.button_url) || UNDER_DEVELOPMENT_DEFAULT_CONTENT.button_url;
 
   return (
     <main className="relative min-h-screen overflow-hidden" style={{ backgroundColor: '#F5F0E8', color: '#2D2D2D' }}>

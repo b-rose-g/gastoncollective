@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { GASTON_CONTACT_EMAIL, GASTON_CONTACT_MAILTO } from "@/lib/contact";
 import { routeMetadata, usePageMetadata } from "@/lib/seo";
 
 const updated = "June 3, 2026";
@@ -30,8 +31,8 @@ export default function LegalPage({ type }: { type: "privacy" | "terms" }) {
 
         <p className="font-sans mt-10 text-sm" style={{ color: "#5A4D42" }}>
           Questions about {location.pathname === "/privacy" ? "privacy" : "these terms"} can be sent to{" "}
-          <a href="mailto:hello@gastoncollective.com" style={{ color: "#A67B5B" }}>
-            hello@gastoncollective.com
+          <a href={GASTON_CONTACT_MAILTO} style={{ color: "#A67B5B" }}>
+            {GASTON_CONTACT_EMAIL}
           </a>
           .
         </p>

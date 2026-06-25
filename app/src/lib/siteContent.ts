@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { GASTON_CONTACT_MAILTO } from './contact';
 
 export const SITE_CONTENT_DISPLAY_LOCATIONS = [
   'homepage',
@@ -78,7 +79,7 @@ export const UNDER_DEVELOPMENT_DEFAULT_CONTENT = {
   image_url: '/images/tattoo_2.jpg',
   image_path: null,
   button_label: 'Email us',
-  button_url: 'mailto:hello@gastoncollective.com',
+  button_url: GASTON_CONTACT_MAILTO,
   display_location: 'global',
   content_type: 'notice',
   is_active: false,

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { GASTON_CONTACT_MAILTO } from '@/lib/contact';
 import { prefersReducedMotion, revealImmediately } from '@/lib/motion';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -69,7 +70,7 @@ export default function FooterSection() {
         <div ref={linksRef} className="flex flex-col items-center gap-6 opacity-0">
           <div className="flex items-center gap-8">
             {[
-              { label: 'Email', href: 'mailto:hello@gastoncollective.com' },
+              { label: 'Email', href: GASTON_CONTACT_MAILTO },
               { label: 'Contact', href: '/written-word#contact' },
               { label: 'Events', href: '/events' },
             ].map((link) => (

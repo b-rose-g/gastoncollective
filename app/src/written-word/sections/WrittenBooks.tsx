@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Mail } from 'lucide-react';
+import { gastonMailto } from '@/lib/contact';
 import { prefersReducedMotion, revealImmediately, scrollBehavior } from '@/lib/motion';
 import { getGalleryItemsByLocation, type GalleryItem } from '@/lib/gallery';
 
@@ -26,7 +27,7 @@ const featuredBook: FeaturedBook = {
 };
 
 const bookCheckoutEnabled = import.meta.env.VITE_ENABLE_BOOK_CHECKOUT === 'true';
-const requestCopyEmail = 'mailto:hello@gastoncollective.com?subject=Reach%20For%20The%20Stars%20Copy%20Request';
+const requestCopyEmail = gastonMailto({ subject: 'Reach For The Stars Copy Request' });
 
 export default function WrittenBooks() {
   const sectionRef = useRef<HTMLElement>(null);

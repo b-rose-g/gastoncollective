@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { GASTON_CONTACT_MAILTO } from '@/lib/contact';
 
 export default function WrittenFooter() {
   return (
@@ -23,7 +24,7 @@ export default function WrittenFooter() {
 
         <div className="flex items-center gap-6">
           {[
-            { label: 'Email', href: 'mailto:hello@gastoncollective.com' },
+            { label: 'Email', href: GASTON_CONTACT_MAILTO },
             { label: 'Goodreads', href: 'https://www.goodreads.com/search?q=Kimberlin%20Gaston' },
           ].map((link) => (
             <a

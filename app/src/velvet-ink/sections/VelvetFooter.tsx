@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { GASTON_CONTACT_MAILTO } from '@/lib/contact';
 
 export default function VelvetFooter() {
   return (
@@ -29,7 +30,7 @@ export default function VelvetFooter() {
         <div className="flex items-center gap-6">
           {[
             { label: '@velvetink.br', href: 'https://www.instagram.com/velvetink.br/' },
-            { label: 'Email', href: 'mailto:hello@gastoncollective.com' },
+            { label: 'Email', href: GASTON_CONTACT_MAILTO },
             { label: 'Privacy', href: '/privacy' },
             { label: 'Terms', href: '/terms' },
           ].map((link) => (
